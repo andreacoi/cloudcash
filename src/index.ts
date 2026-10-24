@@ -1,6 +1,7 @@
 import { Hono, Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { parseGnucash, exportGnucash, Book } from "./gnucash";
+import { buildXlsx } from "./xlsx";
 
 type Env = { Bindings: { DB: D1Database; ASSETS: Fetcher }; Variables: { userId: number } };
 const app = new Hono<Env>();
@@ -326,6 +327,13 @@ app.get("/api/export", async (c) => {
   ]);
   const gz = await exportGnucash({ accounts: a.results as any, transactions: t.results as any, splits: s.results as any }, newGuid());
   return new Response(gz, { headers: { "content-type": "application/octet-stream", "content-disposition": `attachment; filename="cloudcash-${new Date().toISOString().slice(0, 10)}.gnucash"` } });
+});
+
+app.get("/api/export.xlsx", async (c) => {
+  const db = c.env.DB;
+  const [a, t, s] = await db.batch([db.prepare("SELECT * FROM accounts"), db.prepare("SELECT * FROM transactions"), db.prepare("SELECT * FROM splits")]);
+  const xlsx = buildXlsx(a.results as any, t.results as any, s.results as any);
+  return new Response(xlsx, { headers: { "content-type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "content-disposition": `attachment; filename="cloudcash-${new Date().toISOString().slice(0, 10)}.xlsx"` } });
 });
 
 app.notFound((c) => c.env.ASSETS.fetch(c.req.raw));

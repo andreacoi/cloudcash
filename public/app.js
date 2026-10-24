@@ -71,11 +71,12 @@ function renderLogin(setup = false) {
 async function shell() {
   await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
-    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
+    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz" hidden>`;
   $("#home").onclick = () => (location.hash = "");
   $("#bo").onclick = async () => { await api("/logout", { method: "POST" }); renderLogin(); };
   $("#be").onclick = () => (location.href = "/api/export");
+  $("#bx").onclick = () => (location.href = "/api/export.xlsx");
   $("#bi").onclick = () => $("#file").click();
   $("#file").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
