@@ -44,7 +44,14 @@ dialog table{background:#fff}
 .hid{opacity:.55}
 a{color:var(--acc)}
 .rec{display:inline-block;min-width:1.2em;text-align:center}
-@media(max-width:640px){.hide-sm{display:none}main{padding:6px}th,td{padding:5px 5px}}
+.only-sm{display:none}.small{font-size:12px}
+@media(max-width:640px){
+  .hide-sm{display:none}main{padding:6px}th,td{padding:5px 5px}
+  td.only-sm,th.only-sm{display:table-cell}div.only-sm{display:block}
+  /* registro: tutto nella larghezza dello schermo, niente scroll orizzontale */
+  th{font-size:12px}td{font-size:13px}
+  td:first-child{white-space:nowrap}
+}
 @media(max-width:1000px){.hide-md{display:none}}
 tbody tr.entry,tbody tr.entry:nth-child(even){background:var(--cream)}
 .entry td{padding:2px 4px}.entry input,.entry select{padding:3px 5px}

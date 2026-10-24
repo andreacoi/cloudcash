@@ -69,6 +69,7 @@ function renderLogin(setup = false) {
 }
 
 async function shell() {
+  await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
     <button id="bi">Importa</button><button id="be">Esporta</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz" hidden>`;
@@ -112,10 +113,27 @@ async function route() {
   viewAccounts();
 }
 
+// ---------- impostazioni: salvate sul server (valgono su ogni dispositivo), con copia locale di riserva ----------
+let settings = {};
+const loadLocal = (k, def) => { try { return JSON.parse(localStorage.getItem(k)) ?? def; } catch { return def; } };
+function saveSetting(key, value) {
+  settings[key] = value;
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch {}
+  api("/settings/" + key, { method: "PUT", json: value }).catch(() => {}); // se fallisce resta la copia locale
+}
+async function loadSettings() {
+  settings = await j("/settings").catch(() => ({}));
+  const get = (k, def) => settings[k] ?? loadLocal(k, def);
+  Object.assign(accSort, get("accSort", accSort));
+  Object.assign(regSort, get("regSort", regSort));
+  showHidden = !!get("showHidden", false);
+  showRec = !!get("showRec", false);
+}
+
 // ---------- ordinamento ----------
-const loadSort = (k, def) => { try { return JSON.parse(localStorage.getItem(k)) || def; } catch { return def; } };
-let accSort = loadSort("accSort", { key: "name", dir: 1 });
-let regSort = loadSort("regSort", { key: "date", dir: -1 });
+const accSort = { key: "name", dir: 1 };
+const regSort = { key: "date", dir: -1 };
+let showRec = false;
 const cmp = (a, b) => (typeof a === "string" ? a.localeCompare(b, "it") : a - b);
 function sortTh(label, key, st, cls = "") {
   const arrow = st.key === key ? (st.dir > 0 ? " ▲" : " ▼") : "";
@@ -126,7 +144,7 @@ function bindSort(st, name, redraw) {
     const k = th.dataset.sort;
     st.dir = st.key === k ? -st.dir : (k === "date" || k === "balance" || k === "total" || k === "amount" ? -1 : 1);
     st.key = k;
-    try { localStorage.setItem(name, JSON.stringify(st)); } catch {}
+    saveSetting(name, { key: st.key, dir: st.dir });
     redraw();
   }));
 }
@@ -153,7 +171,7 @@ function viewAccounts() {
       <button class="primary" id="na">Nuovo conto</button></div>
     <div class="card"><table><thead><tr>${sortTh("Conto", "name", accSort)}${sortTh("Tipo", "type", accSort, "hide-sm")}<th class="hide-md">Descrizione</th>${sortTh("Saldo", "balance", accSort, "num hide-md")}${sortTh("Totale", "total", accSort, "num")}<th></th></tr></thead><tbody>${rows.join("") || '<tr><td colspan="6" class="mut">Nessun conto. Importa un file .gnucash o creane uno.</td></tr>'}</tbody></table></div>`;
   bindSort(accSort, "accSort", viewAccounts);
-  $("#sh").onchange = (e) => { showHidden = e.target.checked; viewAccounts(); };
+  $("#sh").onchange = (e) => { showHidden = e.target.checked; saveSetting("showHidden", showHidden); viewAccounts(); };
   $("#na").onclick = () => accountDialog();
   document.querySelectorAll("tr[data-id]").forEach((tr) => (tr.onclick = (e) => { if (!e.target.closest("button")) location.hash = "#/a/" + tr.dataset.id; }));
   document.querySelectorAll("[data-edit]").forEach((b) => (b.onclick = () => accountDialog(byId.get(b.dataset.edit))));
@@ -212,6 +230,7 @@ async function deleteAccount(acc) {
 
 // ---------- registro ----------
 async function viewRegister(acc) {
+  if (!showRec && regSort.key === "rec") regSort.key = "date"; // non si ordina per una colonna nascosta
   const rows = await j(`/accounts/${acc.id}/register`);
   const [cd, cc] = COLS[acc.type] ?? ["Dare", "Avere"];
   const sg = sign(acc);
@@ -225,24 +244,27 @@ async function viewRegister(acc) {
   const entry = acc.placeholder ? "" : `<tr class="entry"><td><input type="date" name="d" value="${lastDate ?? today()}"></td>
     <td class="hide-sm"><input name="n" autocomplete="off"></td>
     <td><input name="ds" list="descs" autocomplete="off" placeholder="Nuova transazione…"></td>
-    <td class="hide-sm"><select name="t"><option value="">Trasferimento</option>${accountOptions(null, { onlyPostable: true })}</select></td><td></td>
+    <td class="hide-sm"><select name="t"><option value="">Trasferimento</option>${accountOptions(null, { onlyPostable: true })}</select></td>${showRec ? "<td></td>" : ""}
     <td><input class="num" name="dr" inputmode="decimal" placeholder="${cd}"></td><td><input class="num" name="cr" inputmode="decimal" placeholder="${cc}"></td><td></td></tr>`;
   const lines = ordered.map((r) => {
     const v = r.amount, other = r.others > 1 ? "-- Split --" : byId.get(r.other_account)?.full ?? "";
-    return `<tr class="click" data-tx="${r.tx_id}"><td>${fmtDate(r.date_posted)}</td><td class="hide-sm">${r.num ? `<a href="#" class="ser" data-num="${esc(r.num)}">${esc(r.num)}${r.series_n > 1 ? ` ×${r.series_n}` : ""}</a>` : ""}</td><td>${esc(r.description)}${r.has_details ? ' <span title="Ha dettagli">📝</span>' : ""}</td>
+    return `<tr class="click" data-tx="${r.tx_id}"><td>${fmtDate(r.date_posted)}</td><td class="hide-sm">${r.num ? `<a href="#" class="ser" data-num="${esc(r.num)}">${esc(r.num)}${r.series_n > 1 ? ` ×${r.series_n}` : ""}</a>` : ""}</td><td>${esc(r.description)}${r.has_details ? ' <span title="Ha dettagli">📝</span>' : ""}${other ? `<div class="only-sm mut small">${esc(other)}</div>` : ""}</td>
       <td class="hide-sm mut">${esc(other)}</td>
-      <td class="num"><span class="rec" data-split="${r.split_id}" data-st="${r.reconciled}" title="Stato riconciliazione">${r.reconciled}</span></td>
-      <td class="num">${v > 0 ? money(v) : ""}</td><td class="num">${v < 0 ? money(-v) : ""}</td>
+      ${showRec ? `<td class="num"><span class="rec" data-split="${r.split_id}" data-st="${r.reconciled}" title="Stato riconciliazione">${r.reconciled}</span></td>` : ""}
+      <td class="num hide-sm ${v * sg < 0 ? "neg" : ""}">${v > 0 ? money(v) : ""}</td><td class="num hide-sm ${v * sg < 0 ? "neg" : ""}">${v < 0 ? money(-v) : ""}</td>
+      <td class="num only-sm ${v * sg < 0 ? "neg" : ""}">${money(v * sg)}</td>
       <td class="num ${r.balance * sg < 0 ? "neg" : ""}">${money(r.balance * sg)}</td></tr>`;
   });
   $("#main").innerHTML = `<div class="bar"><h2><span class="crumb" id="back">Conti</span> › ${esc(acc.full)}</h2>
+      <label class="mut"><input type="checkbox" id="sr" style="width:auto" ${showRec ? "checked" : ""}> colonna R</label>
       <button class="primary" id="nt" ${acc.placeholder ? "disabled" : ""}>Nuova transazione</button></div>
-    <div class="card" style="overflow-x:auto"><table><thead><tr>${sortTh("Data", "date", regSort)}${sortTh("N.", "num", regSort, "hide-sm")}${sortTh("Descrizione", "description", regSort)}${sortTh("Trasferimento", "other", regSort, "hide-sm")}${sortTh("R", "rec", regSort, "num")}
-      <th class="num" data-sort="amount" style="cursor:pointer">${cd}</th><th class="num" data-sort="amount" style="cursor:pointer">${cc}</th>${sortTh("Saldo", "balance", regSort, "num")}</tr></thead>
+    <div class="card" style="overflow-x:auto"><table><thead><tr>${sortTh("Data", "date", regSort)}${sortTh("N.", "num", regSort, "hide-sm")}${sortTh("Descrizione", "description", regSort)}${sortTh("Trasferimento", "other", regSort, "hide-sm")}${showRec ? sortTh("R", "rec", regSort, "num") : ""}
+      <th class="num hide-sm" data-sort="amount" style="cursor:pointer">${cd}</th><th class="num hide-sm" data-sort="amount" style="cursor:pointer">${cc}</th>${sortTh("Importo", "amount", regSort, "num only-sm")}${sortTh("Saldo", "balance", regSort, "num")}</tr></thead>
       <tbody>${entryPos === "top" ? entry + lines.join("") : lines.join("") + entry}</tbody></table></div>
     <div class="err" id="ee"></div><datalist id="descs">${[...new Set(rows.map((r) => r.description))].map((d) => `<option value="${esc(d)}">`).join("")}</datalist>`;
   $("#back").onclick = () => (location.hash = "");
   bindSort(regSort, "regSort", () => viewRegister(acc));
+  $("#sr").onchange = (e) => { showRec = e.target.checked; saveSetting("showRec", showRec); viewRegister(acc); };
   $("#nt").onclick = () => txDialog(null, acc);
   bindEntry($(".entry"), acc, rows);
   document.querySelectorAll("tr[data-tx]").forEach((tr) => (tr.onclick = (e) => {

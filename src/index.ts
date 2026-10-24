@@ -94,6 +94,23 @@ app.post("/api/password", async (c) => {
   return c.json({ ok: true });
 });
 
+// ---------- impostazioni (uguali su ogni dispositivo) ----------
+const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec"];
+
+app.get("/api/settings", async (c) => {
+  const r = await c.env.DB.prepare("SELECT key,value FROM settings").all<{ key: string; value: string }>();
+  return c.json(Object.fromEntries(r.results.map((x) => [x.key, JSON.parse(x.value)])));
+});
+
+app.put("/api/settings/:key", async (c) => {
+  const key = c.req.param("key");
+  if (!SETTING_KEYS.includes(key)) return c.json({ error: "Impostazione sconosciuta" }, 400);
+  const value = JSON.stringify(await c.req.json());
+  if (value.length > 2000) return c.json({ error: "Valore troppo lungo" }, 400);
+  await c.env.DB.prepare("INSERT INTO settings VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(key, value).run();
+  return c.json({ ok: true });
+});
+
 // ---------- conti ----------
 const ACC_TYPES = ["ASSET", "BANK", "CASH", "CREDIT", "LIABILITY", "STOCK", "MUTUAL", "RECEIVABLE", "PAYABLE", "INCOME", "EXPENSE", "EQUITY", "TRADING"];
 

@@ -38,3 +38,7 @@ CREATE TABLE IF NOT EXISTS splits (
 CREATE INDEX IF NOT EXISTS idx_splits_tx ON splits(tx_id);
 CREATE INDEX IF NOT EXISTS idx_splits_acc ON splits(account_id);
 CREATE INDEX IF NOT EXISTS idx_tx_date ON transactions(date_posted);
+CREATE TABLE IF NOT EXISTS settings (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL   -- JSON
+);
