@@ -1,0 +1,51 @@
+/* Palette ispirata a GnuCash (tema GTK chiaro) */
+:root{color-scheme:light;--bg:#ededed;--card:#fff;--fg:#1c1c1c;--mut:#6b6b6b;--line:#cfcfcf;--bar:#e1e1e1;--th:#d8d8d8;--acc:#3465a4;--neg:#cc0000;--hover:#4a90d9;--alt:#fffff0;--cream:#fffbd0}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 "Cantarell","DejaVu Sans",system-ui,sans-serif}
+header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:linear-gradient(#efefef,var(--bar));border-bottom:1px solid #b5b5b5;position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:#2e3436}
+header .sp{flex:1}
+main{padding:10px 12px}
+@media(min-width:900px){main{max-width:none}}
+button,select,input,textarea{font:inherit;color:inherit}
+button{background:linear-gradient(#fafafa,#e0e0e0);border:1px solid #adadad;border-radius:3px;padding:4px 12px;cursor:pointer}
+button:hover{background:linear-gradient(#fff,#e9e9e9)}
+button:active{background:#d2d2d2}
+button.primary{background:linear-gradient(#5b92d6,#3d78c0);border-color:#2f5f9c;color:#fff}
+button.danger{color:var(--neg)}
+button.link{border:0;background:none;color:var(--acc);padding:2px 6px}
+input,select,textarea{background:#fff;border:1px solid #adadad;border-radius:2px;padding:4px 6px;width:100%}
+input:focus,select:focus{outline:2px solid #86b3e6;outline-offset:-1px}
+.card{background:var(--card);border:1px solid #adadad;border-radius:2px;overflow:hidden}
+.bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
+.bar h2{margin:0;font-size:16px;flex:1}
+table{width:100%;border-collapse:collapse}
+th,td{padding:4px 8px;text-align:left;border-bottom:1px solid #e4e4e4}
+th{font-size:13px;font-weight:600;background:linear-gradient(#e8e8e8,var(--th));border-bottom:1px solid #adadad;border-right:1px solid #c4c4c4;white-space:nowrap}
+tbody tr:nth-child(even){background:var(--alt)}
+tbody tr.click{cursor:pointer}
+tbody tr.click:hover{background:var(--hover);color:#fff}
+tbody tr.click:hover .neg,tbody tr.click:hover .mut,tbody tr.click:hover a,tbody tr.click:hover .link{color:#fff}
+.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+.neg{color:var(--neg)}.mut{color:var(--mut)}
+.login{max-width:340px;margin:12vh auto;padding:24px}
+.login h1{margin-top:0}
+.login label,dialog label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
+.err{color:var(--neg);margin:8px 0;min-height:1.2em}
+dialog{border:1px solid #888;border-radius:3px;background:#f2f1f0;color:var(--fg);padding:18px;width:min(780px,96vw);max-height:94vh;overflow:auto}
+dialog::backdrop{background:#0006}
+dialog table{background:#fff}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.splits td{padding:3px;border:0;background:none}
+.splits tbody tr{background:none!important}
+.foot{display:flex;gap:8px;margin-top:16px;align-items:center}
+.foot .sp{flex:1}
+.crumb{color:var(--acc);cursor:pointer}
+.hid{opacity:.55}
+a{color:var(--acc)}
+.rec{display:inline-block;min-width:1.2em;text-align:center}
+@media(max-width:640px){.hide-sm{display:none}main{padding:6px}th,td{padding:5px 5px}}
+@media(max-width:1000px){.hide-md{display:none}}
+tbody tr.entry,tbody tr.entry:nth-child(even){background:var(--cream)}
+.entry td{padding:2px 4px}.entry input,.entry select{padding:3px 5px}
+@media(max-width:640px){.entry{display:none}}
