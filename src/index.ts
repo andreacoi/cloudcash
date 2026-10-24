@@ -296,6 +296,21 @@ app.patch("/api/splits/:id/reconcile", async (c) => {
 });
 
 // ---------- import / export ----------
+// Sostituisce l'intero libro in un unico batch (D1 lo esegue in transazione: o tutto o niente)
+async function replaceBook(db: D1Database, book: Book, details: (txId: string) => string) {
+  const byParent = new Map<string | null, Book["accounts"]>();
+  for (const a of book.accounts) (byParent.get(a.parent_id) ?? byParent.set(a.parent_id, []).get(a.parent_id)!).push(a);
+  const ordered = (function walk(p: string | null): Book["accounts"] { return (byParent.get(p) ?? []).flatMap((a) => [a, ...walk(a.id)]); })(null);
+  if (ordered.length !== book.accounts.length) throw new Error("Albero dei conti non valido (cicli o genitori mancanti)");
+  await db.batch([
+    db.prepare("DELETE FROM splits"), db.prepare("DELETE FROM transactions"),
+    db.prepare("UPDATE accounts SET parent_id=NULL"), db.prepare("DELETE FROM accounts"),
+    ...ordered.map((a) => db.prepare("INSERT INTO accounts VALUES (?,?,?,?,?,?,?)").bind(a.id, a.parent_id, a.name, a.type, a.description, a.placeholder, a.hidden)),
+    ...book.transactions.map((t) => db.prepare("INSERT INTO transactions (id,date_posted,date_entered,num,description,notes,details) VALUES (?,?,?,?,?,?,?)").bind(t.id, t.date_posted, t.date_entered, t.num, t.description, t.notes, details(t.id))),
+    ...book.splits.map((s) => db.prepare("INSERT INTO splits VALUES (?,?,?,?,?,?)").bind(s.id, s.tx_id, s.account_id, s.amount, s.memo, s.reconciled)),
+  ]);
+}
+
 app.post("/api/import", async (c) => {
   let book: Book;
   try { book = await parseGnucash(await c.req.arrayBuffer()); }
@@ -304,20 +319,59 @@ app.post("/api/import", async (c) => {
   const db = c.env.DB;
   // i dettagli rich text non esistono nel formato GnuCash: li conservo per le transazioni con lo stesso id
   const keep = new Map(((await db.prepare("SELECT id,details FROM transactions WHERE details<>''").all<any>()).results).map((r) => [r.id, r.details]));
-  // FK disattivabili solo per statement; svuoto in ordine sicuro e reinserisco genitori prima dei figli
-  const byParent = new Map<string | null, typeof book.accounts>();
-  for (const a of book.accounts) (byParent.get(a.parent_id) ?? byParent.set(a.parent_id, []).get(a.parent_id)!).push(a);
-  const ordered = (function walk(p: string | null): typeof book.accounts { return (byParent.get(p) ?? []).flatMap((a) => [a, ...walk(a.id)]); })(null);
-  const stmts = [
-    db.prepare("DELETE FROM splits"), db.prepare("DELETE FROM transactions"),
-    db.prepare("UPDATE accounts SET parent_id=NULL"), db.prepare("DELETE FROM accounts"),
-    ...ordered.map((a) => db.prepare("INSERT INTO accounts VALUES (?,?,?,?,?,?,?)").bind(a.id, a.parent_id, a.name, a.type, a.description, a.placeholder, a.hidden)),
-    ...book.transactions.map((t) => db.prepare("INSERT INTO transactions (id,date_posted,date_entered,num,description,notes,details) VALUES (?,?,?,?,?,?,?)").bind(t.id, t.date_posted, t.date_entered, t.num, t.description, t.notes, keep.get(t.id) ?? "")),
-    ...book.splits.map((s) => db.prepare("INSERT INTO splits VALUES (?,?,?,?,?,?)").bind(s.id, s.tx_id, s.account_id, s.amount, s.memo, s.reconciled)),
-  ];
-  // D1 esegue ogni batch in transazione; per atomicità totale uso un unico batch (limite ~ migliaia di statement ok per libri personali)
-  await db.batch(stmts);
+  try { await replaceBook(db, book, (id) => keep.get(id) ?? ""); }
+  catch (e: any) { return c.json({ error: e.message }, 400); }
   return c.json({ accounts: book.accounts.length, transactions: book.transactions.length });
+});
+
+// ---------- backup / ripristino JSON (include i dettagli e le impostazioni) ----------
+app.get("/api/backup", async (c) => {
+  const db = c.env.DB;
+  const [a, t, sp, st] = await db.batch([
+    db.prepare("SELECT * FROM accounts"), db.prepare("SELECT * FROM transactions ORDER BY date_posted, date_entered"),
+    db.prepare("SELECT * FROM splits ORDER BY rowid"), db.prepare("SELECT key,value FROM settings"),
+  ]);
+  const settings = Object.fromEntries((st.results as any[]).map((r) => [r.key, JSON.parse(r.value)]));
+  const body = JSON.stringify({ app: "cloudcash", version: 1, exported_at: new Date().toISOString(), accounts: a.results, transactions: t.results, splits: sp.results, settings }, null, 1);
+  return new Response(body, { headers: { "content-type": "application/json", "content-disposition": `attachment; filename="cloudcash-backup-${new Date().toISOString().slice(0, 10)}.json"` } });
+});
+
+app.post("/api/restore", async (c) => {
+  let d: any;
+  try { d = await c.req.json(); } catch { return c.json({ error: "JSON non valido" }, 400); }
+  const str = (v: any) => typeof v === "string";
+  const err = (m: string) => c.json({ error: "Backup non valido: " + m }, 400);
+  if (d?.app !== "cloudcash" || d.version !== 1 || !Array.isArray(d.accounts) || !Array.isArray(d.transactions) || !Array.isArray(d.splits)) return err("formato non riconosciuto");
+  const accIds = new Set<string>(), txIds = new Set<string>();
+  let roots = 0;
+  for (const a of d.accounts) {
+    if (!str(a.id) || !str(a.name) || !ACC_TYPES.concat("ROOT").includes(a.type) || !(a.parent_id === null || str(a.parent_id))) return err("conto malformato");
+    if (accIds.has(a.id)) return err("conto duplicato");
+    accIds.add(a.id); if (a.type === "ROOT") roots++;
+    a.description = str(a.description) ? a.description : ""; a.placeholder = a.placeholder ? 1 : 0; a.hidden = a.hidden ? 1 : 0;
+  }
+  if (roots !== 1) return err("serve esattamente un conto radice");
+  if (d.accounts.some((a: any) => a.parent_id !== null && !accIds.has(a.parent_id))) return err("genitore inesistente");
+  for (const t of d.transactions) {
+    if (!str(t.id) || !/^\d{4}-\d{2}-\d{2}$/.test(t.date_posted ?? "") || txIds.has(t.id)) return err("transazione malformata");
+    txIds.add(t.id);
+    t.date_entered = str(t.date_entered) ? t.date_entered : new Date().toISOString();
+    for (const k of ["num", "description", "notes", "details"]) t[k] = str(t[k]) ? t[k] : "";
+  }
+  const sums = new Map<string, number>();
+  for (const s of d.splits) {
+    if (!str(s.id) || !txIds.has(s.tx_id) || !accIds.has(s.account_id) || !Number.isInteger(s.amount)) return err("split malformato");
+    s.memo = str(s.memo) ? s.memo : ""; s.reconciled = ["n", "c", "y"].includes(s.reconciled) ? s.reconciled : "n";
+    sums.set(s.tx_id, (sums.get(s.tx_id) ?? 0) + s.amount);
+  }
+  if ([...sums.values()].some((v) => v !== 0) || txIds.size !== sums.size) return err("transazioni sbilanciate o senza split");
+  const details = new Map<string, string>(d.transactions.map((t: any) => [t.id, t.details]));
+  try { await replaceBook(c.env.DB, d as Book, (id) => details.get(id) ?? ""); }
+  catch (e: any) { return c.json({ error: e.message }, 400); }
+  // impostazioni (solo chiavi note)
+  const sets = Object.entries(d.settings ?? {}).filter(([k]) => SETTING_KEYS.includes(k));
+  if (sets.length) await c.env.DB.batch(sets.map(([k, v]) => c.env.DB.prepare("INSERT INTO settings VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(k, JSON.stringify(v))));
+  return c.json({ accounts: d.accounts.length, transactions: d.transactions.length });
 });
 
 app.get("/api/export", async (c) => {

@@ -71,19 +71,22 @@ function renderLogin(setup = false) {
 async function shell() {
   await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
-    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
-    <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz" hidden>`;
+    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
+    <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz,.json" hidden>`;
   $("#home").onclick = () => (location.hash = "");
   $("#bo").onclick = async () => { await api("/logout", { method: "POST" }); renderLogin(); };
   $("#be").onclick = () => (location.href = "/api/export");
   $("#bx").onclick = () => (location.href = "/api/export.xlsx");
+  $("#bj").onclick = () => (location.href = "/api/backup");
   $("#bi").onclick = () => $("#file").click();
   $("#file").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
     if (!f || !confirm("L'import SOSTITUISCE tutti i dati attuali con quelli del file. Continuare?")) return;
+    const json = f.name.toLowerCase().endsWith(".json"); // backup JSON di CloudCash (con dettagli) oppure file GnuCash
     try {
-      const r = await j("/import", { method: "POST", body: await f.arrayBuffer(), headers: { "content-type": "application/octet-stream" } });
-      alert(`Importati ${r.accounts} conti e ${r.transactions} transazioni.`);
+      const r = await j(json ? "/restore" : "/import", { method: "POST", body: await f.arrayBuffer(), headers: { "content-type": json ? "application/json" : "application/octet-stream" } });
+      alert(`${json ? "Ripristinati" : "Importati"} ${r.accounts} conti e ${r.transactions} transazioni.`);
+      if (json) await loadSettings();
       location.hash = ""; route();
     } catch (err) { alert("Import fallito: " + err.message); }
   };
