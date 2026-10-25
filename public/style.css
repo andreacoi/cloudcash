@@ -1,40 +1,87 @@
-/* Palette ispirata a GnuCash (tema GTK chiaro) */
-:root{color-scheme:light;--bg:#ededed;--card:#fff;--fg:#1c1c1c;--mut:#6b6b6b;--line:#cfcfcf;--bar:#e1e1e1;--th:#d8d8d8;--acc:#3465a4;--neg:#cc0000;--hover:#4a90d9;--alt:#fffff0;--cream:#fffbd0}
+/* Temi: GnuCash (predefinito) e Bootstrap 5, ciascuno chiaro o notte.
+   Gli attributi data-theme / data-dark sono impostati su <html> da app.js (e da index.html per evitare lampi). */
+
+/* ---- GnuCash chiaro (tema GTK) ---- */
+:root{color-scheme:light;
+  --font:"Cantarell","DejaVu Sans",system-ui,sans-serif;--fs:14px;
+  --bg:#ededed;--card:#fff;--fg:#1c1c1c;--mut:#6b6b6b;--line:#e4e4e4;--acc:#3465a4;--neg:#cc0000;
+  --hbar:linear-gradient(#efefef,#e1e1e1);--hborder:#b5b5b5;--htitle:#2e3436;
+  --btn:linear-gradient(#fafafa,#e0e0e0);--btn-h:linear-gradient(#fff,#e9e9e9);--btn-a:#d2d2d2;--btn-b:#adadad;--r:3px;
+  --pri:linear-gradient(#5b92d6,#3d78c0);--pri-b:#2f5f9c;
+  --in:#fff;--in-b:#adadad;--in-r:2px;--focus:0 0 0 2px #86b3e6;
+  --card-b:#adadad;--card-r:2px;
+  --th:linear-gradient(#e8e8e8,#d8d8d8);--th-b:#adadad;--th-sep:#c4c4c4;
+  --alt:#fffff0;--hover-bg:#4a90d9;--hover-fg:#fff;--hover-neg:#fff;--cream:#fffbd0;
+  --dlg:#f2f1f0;--dlg-b:#888;--dlg-r:3px;--tab:#e4e3e2;--tab-on:#fff;--sw-b:#0004}
+/* ---- GnuCash notte ---- */
+html[data-dark="1"]{color-scheme:dark;
+  --bg:#353535;--card:#2d2d2d;--fg:#eeeeec;--mut:#a0a0a0;--line:#3a3a3a;--acc:#729fcf;--neg:#ff6b6b;
+  --hbar:linear-gradient(#424242,#383838);--hborder:#1b1b1b;--htitle:#eeeeec;
+  --btn:linear-gradient(#4a4a4a,#3a3a3a);--btn-h:linear-gradient(#545454,#434343);--btn-a:#2f2f2f;--btn-b:#1b1b1b;
+  --pri:linear-gradient(#4a90d9,#2e6bb0);--pri-b:#1d4a80;
+  --in:#2a2a2a;--in-b:#1b1b1b;--focus:0 0 0 2px #3d78c0;
+  --card-b:#1b1b1b;--th:linear-gradient(#484848,#3c3c3c);--th-b:#1b1b1b;--th-sep:#2a2a2a;
+  --alt:#323232;--hover-bg:#215d9c;--cream:#4a4527;
+  --dlg:#3a3a3a;--dlg-b:#1b1b1b;--tab:#444;--tab-on:#2d2d2d;--sw-b:#fff4}
+/* ---- Bootstrap 5 chiaro ---- */
+html[data-theme="bs5"]{color-scheme:light;
+  --font:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;--fs:15px;
+  --bg:#f8f9fa;--card:#fff;--fg:#212529;--mut:#6c757d;--line:#dee2e6;--acc:#0d6efd;--neg:#dc3545;
+  --hbar:#fff;--hborder:#dee2e6;--htitle:#212529;
+  --btn:#fff;--btn-h:#f1f3f5;--btn-a:#e9ecef;--btn-b:#ced4da;--r:.375rem;
+  --pri:#0d6efd;--pri-b:#0d6efd;
+  --in:#fff;--in-b:#ced4da;--in-r:.375rem;--focus:0 0 0 .25rem rgba(13,110,253,.25);
+  --card-b:#dee2e6;--card-r:.5rem;
+  --th:#f8f9fa;--th-b:#dee2e6;--th-sep:transparent;
+  --alt:rgba(0,0,0,.03);--hover-bg:rgba(13,110,253,.09);--hover-fg:var(--fg);--hover-neg:var(--neg);--cream:#fff3cd;
+  --dlg:#fff;--dlg-b:#dee2e6;--dlg-r:.5rem;--tab:#f8f9fa;--tab-on:#fff;--sw-b:#0004}
+/* ---- Bootstrap 5 notte ---- */
+html[data-theme="bs5"][data-dark="1"]{color-scheme:dark;
+  --bg:#1a1d20;--card:#212529;--fg:#dee2e6;--mut:#adb5bd;--line:#343a40;--acc:#6ea8fe;--neg:#ea868f;
+  --hbar:#212529;--hborder:#495057;--htitle:#dee2e6;
+  --btn:#2b3035;--btn-h:#343a40;--btn-a:#3d444b;--btn-b:#495057;
+  --in:#2b3035;--in-b:#495057;--focus:0 0 0 .25rem rgba(110,168,254,.3);
+  --card-b:#495057;--th:#2b3035;--th-b:#495057;
+  --alt:rgba(255,255,255,.03);--hover-bg:rgba(110,168,254,.16);--cream:#4d3b06;
+  --dlg:#212529;--dlg-b:#495057;--tab:#2b3035;--tab-on:#212529;--sw-b:#fff4}
+
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.35 "Cantarell","DejaVu Sans",system-ui,sans-serif}
-header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:linear-gradient(#efefef,var(--bar));border-bottom:1px solid #b5b5b5;position:sticky;top:0;z-index:5}
-header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:#2e3436}
+body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs)/1.35 var(--font)}
+header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--hbar);border-bottom:1px solid var(--hborder);position:sticky;top:0;z-index:5}
+header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:var(--htitle)}
 header .sp{flex:1}
 main{padding:10px 12px}
 @media(min-width:900px){main{max-width:none}}
 button,select,input,textarea{font:inherit;color:inherit}
-button{background:linear-gradient(#fafafa,#e0e0e0);border:1px solid #adadad;border-radius:3px;padding:4px 12px;cursor:pointer}
-button:hover{background:linear-gradient(#fff,#e9e9e9)}
-button:active{background:#d2d2d2}
-button.primary{background:linear-gradient(#5b92d6,#3d78c0);border-color:#2f5f9c;color:#fff}
+button{background:var(--btn);border:1px solid var(--btn-b);border-radius:var(--r);padding:4px 12px;cursor:pointer}
+button:hover{background:var(--btn-h)}
+button:active{background:var(--btn-a)}
+button.primary{background:var(--pri);border-color:var(--pri-b);color:#fff}
+button.primary:hover{filter:brightness(1.08)}
 button.danger{color:var(--neg)}
 button.link{border:0;background:none;color:var(--acc);padding:2px 6px}
-input,select,textarea{background:#fff;border:1px solid #adadad;border-radius:2px;padding:4px 6px;width:100%}
-input:focus,select:focus{outline:2px solid #86b3e6;outline-offset:-1px}
-.card{background:var(--card);border:1px solid #adadad;border-radius:2px;overflow:hidden}
+input,select,textarea{background:var(--in);border:1px solid var(--in-b);border-radius:var(--in-r);padding:4px 6px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;box-shadow:var(--focus)}
+.card{background:var(--card);border:1px solid var(--card-b);border-radius:var(--card-r);overflow:hidden}
 .bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .bar h2{margin:0;font-size:16px;flex:1}
 table{width:100%;border-collapse:collapse}
-th,td{padding:4px 8px;text-align:left;border-bottom:1px solid #e4e4e4}
-th{font-size:13px;font-weight:600;background:linear-gradient(#e8e8e8,var(--th));border-bottom:1px solid #adadad;border-right:1px solid #c4c4c4;white-space:nowrap}
+th,td{padding:4px 8px;text-align:left;border-bottom:1px solid var(--line)}
+th{font-size:13px;font-weight:600;background:var(--th);border-bottom:1px solid var(--th-b);border-right:1px solid var(--th-sep);white-space:nowrap}
 tbody tr:nth-child(even){background:var(--alt)}
 tbody tr.click{cursor:pointer}
-tbody tr.click:hover{background:var(--hover);color:#fff}
-tbody tr.click:hover .neg,tbody tr.click:hover .mut,tbody tr.click:hover a,tbody tr.click:hover .link{color:#fff}
+tbody tr.click:hover{background:var(--hover-bg);color:var(--hover-fg)}
+tbody tr.click:hover .neg{color:var(--hover-neg)}
+tbody tr.click:hover .mut,tbody tr.click:hover a,tbody tr.click:hover .link{color:var(--hover-fg)}
 .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 .neg{color:var(--neg)}.mut{color:var(--mut)}
 .login{max-width:340px;margin:12vh auto;padding:24px}
 .login h1{margin-top:0}
 .login label,dialog label{display:block;font-size:13px;color:var(--mut);margin:10px 0 4px}
 .err{color:var(--neg);margin:8px 0;min-height:1.2em}
-dialog{border:1px solid #888;border-radius:3px;background:#f2f1f0;color:var(--fg);padding:18px;width:min(780px,96vw);max-height:94vh;overflow:auto}
+dialog{border:1px solid var(--dlg-b);border-radius:var(--dlg-r);background:var(--dlg);color:var(--fg);padding:18px;width:min(780px,96vw);max-height:94vh;overflow:auto}
 dialog::backdrop{background:#0006}
-dialog table{background:#fff}
+dialog table{background:var(--card)}
 .row{display:flex;gap:8px}.row>*{flex:1}
 .splits td{padding:3px;border:0;background:none}
 .splits tbody tr{background:none!important}
@@ -56,12 +103,18 @@ a{color:var(--acc)}
 tbody tr.entry,tbody tr.entry:nth-child(even){background:var(--cream)}
 .entry td{padding:2px 4px}.entry input,.entry select{padding:3px 5px}
 @media(max-width:640px){.entry{display:none}}
-.tabs{display:flex;gap:2px;border-bottom:1px solid #adadad;margin:10px 0 4px}
-.tabs button{border-bottom:0;border-radius:3px 3px 0 0;background:#e4e3e2}
-.tabs button.on{background:#fff;font-weight:600}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--dlg-b);margin:10px 0 4px}
+.tabs button{border-bottom:0;border-radius:var(--r) var(--r) 0 0;background:var(--tab)}
+.tabs button.on{background:var(--tab-on);font-weight:600}
 .checks{display:flex;flex-direction:column;gap:2px;margin-top:6px}
 .checks label{color:var(--fg);font-size:14px;margin:2px 0;display:flex;align-items:center;gap:6px}
 .checks input,dialog textarea{width:auto}
 dialog textarea{width:100%}
-.sw{display:inline-block;width:10px;height:10px;border:1px solid #0004;border-radius:2px;margin-right:6px;vertical-align:baseline}
+.sw{display:inline-block;width:10px;height:10px;border:1px solid var(--sw-b);border-radius:2px;margin-right:6px;vertical-align:baseline}
 [hidden]{display:none!important}
+/* editor dei dettagli (Quill) adattato ai temi */
+.ed{background:var(--in);height:160px}
+dialog .ql-toolbar.ql-snow,dialog .ql-container.ql-snow{border-color:var(--in-b)}
+dialog .ql-editor{color:var(--fg)}
+dialog .ql-snow .ql-stroke{stroke:var(--fg)}dialog .ql-snow .ql-fill{fill:var(--fg)}
+dialog .ql-snow .ql-picker,dialog .ql-snow .ql-picker-options{color:var(--fg);background:var(--dlg)}

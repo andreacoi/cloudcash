@@ -97,7 +97,9 @@ app.post("/api/password", async (c) => {
 });
 
 // ---------- impostazioni (uguali su ogni dispositivo) ----------
-const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec"];
+const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec", "theme", "colorMode"];
+const SETTING_ENUMS: Record<string, string[]> = { theme: ["gnucash", "bs5"], colorMode: ["yes", "no", "auto"] };
+const settingOk = (k: string, v: unknown) => !SETTING_ENUMS[k] || SETTING_ENUMS[k].includes(v as string);
 
 app.get("/api/settings", async (c) => {
   const r = await c.env.DB.prepare("SELECT key,value FROM settings").all<{ key: string; value: string }>();
@@ -107,7 +109,9 @@ app.get("/api/settings", async (c) => {
 app.put("/api/settings/:key", async (c) => {
   const key = c.req.param("key");
   if (!SETTING_KEYS.includes(key)) return c.json({ error: "Impostazione sconosciuta" }, 400);
-  const value = JSON.stringify(await c.req.json());
+  const parsed = await c.req.json();
+  if (!settingOk(key, parsed)) return c.json({ error: "Valore non valido" }, 400);
+  const value = JSON.stringify(parsed);
   if (value.length > 2000) return c.json({ error: "Valore troppo lungo" }, 400);
   await c.env.DB.prepare("INSERT INTO settings VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(key, value).run();
   return c.json({ ok: true });
@@ -452,7 +456,7 @@ app.post("/api/restore", async (c) => {
   try { await replaceBook(c.env.DB, d as Book, (id) => details.get(id) ?? ""); }
   catch (e: any) { return c.json({ error: e.message }, 400); }
   // impostazioni (solo chiavi note)
-  const sets = Object.entries(d.settings ?? {}).filter(([k]) => SETTING_KEYS.includes(k));
+  const sets = Object.entries(d.settings ?? {}).filter(([k, v]) => SETTING_KEYS.includes(k) && settingOk(k, v));
   if (sets.length) await c.env.DB.batch(sets.map(([k, v]) => c.env.DB.prepare("INSERT INTO settings VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").bind(k, JSON.stringify(v))));
   return c.json({ accounts: d.accounts.length, transactions: d.transactions.length });
 });

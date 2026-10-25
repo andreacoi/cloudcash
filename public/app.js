@@ -81,7 +81,7 @@ function renderLogin(setup = false) {
 async function shell() {
   await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
-    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp" class="hide-sm">Password</button><button id="bo">Esci</button></header>
+    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz,.json" hidden>`;
   $("#home").onclick = () => (location.hash = "");
   $("#bo").onclick = async () => { await api("/logout", { method: "POST" }); renderLogin(); };
@@ -100,21 +100,7 @@ async function shell() {
       location.hash = ""; route();
     } catch (err) { alert("Import fallito: " + err.message); }
   };
-  $("#bp").onclick = changePassword;
-}
-
-function changePassword() {
-  dlg.innerHTML = `<form method="dialog" id="pf"><h3>Cambia password</h3>
-    <label>Password attuale</label><input name="current" type="password" autocomplete="current-password" required>
-    <label>Nuova password (min. 8)</label><input name="next" type="password" autocomplete="new-password" required minlength="8">
-    <div class="err" id="pe"></div><div class="foot"><span class="sp"></span><button type="button" id="px">Annulla</button><button class="primary">Salva</button></div></form>`;
-  dlg.showModal();
-  $("#px").onclick = () => dlg.close();
-  $("#pf").onsubmit = async (e) => {
-    e.preventDefault();
-    try { await api("/password", { json: Object.fromEntries(new FormData(e.target)) }); dlg.close(); alert("Password aggiornata"); }
-    catch (err) { $("#pe").textContent = err.message; }
-  };
+  $("#bp").onclick = settingsDialog;
 }
 
 // ---------- router ----------
@@ -142,6 +128,99 @@ async function loadSettings() {
   Object.assign(regSort, get("regSort", regSort));
   showHidden = !!get("showHidden", false);
   showRec = !!get("showRec", false);
+  settings.theme = get("theme", "gnucash");
+  settings.colorMode = get("colorMode", "no");
+  applyLook();
+}
+
+// ---------- aspetto: tema (GnuCash / Bootstrap 5) e modalità notte (sì / no / auto) ----------
+const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5" };
+const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (segue il sistema)" };
+const darkMq = matchMedia("(prefers-color-scheme: dark)");
+function applyLook() {
+  const mode = MODES[settings.colorMode] ? settings.colorMode : "no";
+  const root = document.documentElement;
+  root.dataset.theme = THEMES[settings.theme] ? settings.theme : "gnucash";
+  root.dataset.dark = mode === "yes" || (mode === "auto" && darkMq.matches) ? "1" : "0";
+}
+darkMq.addEventListener("change", applyLook); // in modalità automatica segue il sistema in tempo reale
+
+// schede dentro la modale: pulsanti .tabs [data-t] che mostrano il blocco [data-tab] corrispondente
+function bindTabs(onChange) {
+  dlg.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => {
+    dlg.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelectorAll("[data-tab]").forEach((t) => (t.hidden = t.dataset.tab !== b.dataset.t));
+    onChange?.(b.dataset.t);
+  }));
+}
+
+const ACC_SORT_KEYS = { name: "Nome", type: "Tipo", code: "Codice", balance: "Saldo", total: "Totale" };
+const REG_SORT_KEYS = { date: "Data", num: "N.", description: "Descrizione", other: "Trasferimento", amount: "Importo", balance: "Saldo" };
+const DIRS = { 1: "Crescente (A→Z, dal più vecchio)", "-1": "Decrescente (Z→A, dal più recente)" };
+
+// Un'unica modale per aspetto, ordinamento e password. Le scelte si salvano subito; la pagina sotto si aggiorna alla chiusura.
+function settingsDialog() {
+  const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${String(k) === String(cur) ? "selected" : ""}>${v}</option>`).join("");
+  const regKeys = showRec ? { ...REG_SORT_KEYS, rec: "R (riconciliazione)" } : REG_SORT_KEYS;
+  dlg.innerHTML = `<form id="sf"><h3>Impostazioni</h3>
+    <div class="tabs"><button type="button" class="on" data-t="a">Aspetto</button><button type="button" data-t="o">Ordinamento</button><button type="button" data-t="p">Password</button></div>
+
+    <div data-tab="a">
+      <label>Tema</label><select id="st">${opts(THEMES, settings.theme)}</select>
+      <label>Modalità notte</label><select id="sm">${opts(MODES, settings.colorMode)}</select>
+    </div>
+
+    <div data-tab="o" hidden>
+      <h4 style="margin:12px 0 0">Piano dei conti</h4>
+      <div class="row"><div><label>Ordina per</label><select id="ak">${opts(ACC_SORT_KEYS, accSort.key)}</select></div>
+      <div><label>Direzione</label><select id="ad2">${opts(DIRS, accSort.dir)}</select></div></div>
+      <h4 style="margin:16px 0 0">Registro del conto</h4>
+      <div class="row"><div><label>Ordina per</label><select id="rk">${opts(regKeys, regSort.key)}</select></div>
+      <div><label>Direzione</label><select id="rd">${opts(DIRS, regSort.dir)}</select></div></div>
+      <p class="mut small">Puoi cambiarlo anche cliccando sull'intestazione di una colonna.</p>
+    </div>
+
+    <div data-tab="p" hidden>
+      <label>Password attuale</label><input id="pc" type="password" autocomplete="current-password">
+      <label>Nuova password (min. 8 caratteri)</label><input id="pn" type="password" autocomplete="new-password">
+      <label>Ripeti la nuova password</label><input id="pr" type="password" autocomplete="new-password">
+      <div class="err" id="pe"></div>
+      <button type="button" class="primary" id="pg">Cambia password</button>
+    </div>
+
+    <p class="mut small" id="sn">Le scelte sono salvate nel tuo account e valgono su ogni dispositivo.</p>
+    <div class="foot"><span class="sp"></span><button type="button" class="primary" id="sx">Chiudi</button></div></form>`;
+  dlg.showModal();
+  bindTabs((t) => ($("#sn").hidden = t === "p"));
+
+  let resort = false;
+  $("#st").onchange = (e) => { settings.theme = e.target.value; saveSetting("theme", settings.theme); applyLook(); };
+  $("#sm").onchange = (e) => { settings.colorMode = e.target.value; saveSetting("colorMode", settings.colorMode); applyLook(); };
+  const sortBinding = (keyId, dirId, st, name) => {
+    const save = () => { st.key = $(keyId).value; st.dir = +$(dirId).value; saveSetting(name, { key: st.key, dir: st.dir }); resort = true; };
+    $(keyId).onchange = $(dirId).onchange = save;
+  };
+  sortBinding("#ak", "#ad2", accSort, "accSort");
+  sortBinding("#rk", "#rd", regSort, "regSort");
+
+  const changePassword = async () => {
+    const [cur, next, again] = [$("#pc").value, $("#pn").value, $("#pr").value];
+    $("#pe").classList.add("neg");
+    if (!cur) return ($("#pe").textContent = "Inserisci la password attuale");
+    if (next.length < 8) return ($("#pe").textContent = "La nuova password deve avere almeno 8 caratteri");
+    if (next !== again) return ($("#pe").textContent = "Le due nuove password non coincidono");
+    try {
+      await api("/password", { json: { current: cur, next } });
+      ["#pc", "#pn", "#pr"].forEach((i) => ($(i).value = ""));
+      $("#pe").classList.remove("neg"); $("#pe").textContent = "Password aggiornata ✓";
+    } catch (err) { $("#pe").textContent = err.message; }
+  };
+  $("#pg").onclick = changePassword;
+  // Invio nei campi password = cambia password; altrove non deve chiudere la modale
+  $("#sf").onsubmit = (e) => { e.preventDefault(); if (!$('[data-tab="p"]').hidden) changePassword(); };
+  const close = () => dlg.close();
+  $("#sx").onclick = close;
+  dlg.addEventListener("close", () => { if (resort) route(); }, { once: true });
 }
 
 // ---------- ordinamento ----------
@@ -249,11 +328,7 @@ function accountDialog(acc) {
     <div class="foot">${isNew ? "" : '<button type="button" class="danger" id="ad">Elimina</button>'}<span class="sp"></span><button type="button" id="ax">Annulla</button><button class="primary">Salva</button></div></form>`;
 
   const form = $("#af"), el = (n) => form.elements[n];
-  // schede
-  dlg.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => {
-    dlg.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
-    dlg.querySelectorAll("[data-tab]").forEach((t) => (t.hidden = t.dataset.tab !== b.dataset.t));
-  }));
+  bindTabs();
   // il tipo dipende dal padre (stesse regole di GnuCash); se il tipo attuale non è più ammesso passa al primo valido
   const refreshTypes = () => {
     const ptype = byId.get(el("parent_id").value)?.type ?? "ROOT";
@@ -463,7 +538,7 @@ async function txDialog(id, acc) {
     <label>Descrizione</label><input name="description" value="${esc(t.description)}" list="descs" autocomplete="off" required>
     <datalist id="descs"></datalist>
     <label>Note</label><input name="notes" value="${esc(t.notes)}">
-    <label>Dettagli</label><div id="ed" style="background:#fff;height:160px"></div>
+    <label>Dettagli</label><div id="ed" class="ed"></div>
     <label>Movimenti (Dare = positivo, Avere = negativo nel registro del conto)</label>
     <table class="splits"><thead><tr><th>Conto</th><th>Memo</th><th class="num">Dare</th><th class="num">Avere</th><th></th></tr></thead><tbody id="sp"></tbody></table>
     <button type="button" class="link" id="as">+ split</button>
