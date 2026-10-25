@@ -78,16 +78,120 @@ function renderLogin(setup = false) {
   };
 }
 
+// ---- calcolatrice: pannello flottante non modale, resta usabile sopra le finestre di dialogo ----
+function calcEval(src) {
+  const t = src.replace(/\s/g, "").replace(/,/g, ".").replace(/×/g, "*").replace(/[÷:]/g, "/").replace(/[−–]/g, "-");
+  let i = 0;
+  const num = () => {
+    const m = /^\d*\.?\d+|^\d+\.?/.exec(t.slice(i));
+    if (!m) throw 0;
+    i += m[0].length; return parseFloat(m[0]);
+  };
+  const atom = () => {
+    let v;
+    if (t[i] === "-") { i++; return -atom(); }
+    if (t[i] === "+") { i++; return atom(); }
+    if (t[i] === "(") { i++; v = sum(); if (t[i++] !== ")") throw 0; } else v = num();
+    while (t[i] === "%") { i++; v /= 100; }
+    return v;
+  };
+  const prod = () => {
+    let v = atom();
+    while (t[i] === "*" || t[i] === "/") { const o = t[i++], r = atom(); if (o === "/" && r === 0) throw 0; v = o === "*" ? v * r : v / r; }
+    return v;
+  };
+  const sum = () => {
+    let v = prod();
+    while (t[i] === "+" || t[i] === "-") { const o = t[i++], r = prod(); v = o === "+" ? v + r : v - r; }
+    return v;
+  };
+  const v = sum();
+  if (i < t.length || !isFinite(v)) throw 0;
+  return Math.round(v * 1e9) / 1e9;
+}
+
+const CALC_KEYS = ["C", "⌫", "%", "÷", "7", "8", "9", "×", "4", "5", "6", "−", "1", "2", "3", "+", "0", ",", "(", ")"];
+let calcEl = null;
+
+function toggleCalc() {
+  if (calcEl) { calcEl.remove(); calcEl = null; return; }
+  calcEl = document.createElement("div");
+  calcEl.id = "calc";
+  calcEl.innerHTML = `<div class="calc-h"><span>Calcolatrice</span><button type="button" class="link" id="calc-x" aria-label="Chiudi">✕</button></div>
+    <input id="calc-in" inputmode="decimal" autocomplete="off" spellcheck="false" aria-label="Espressione">
+    <div class="calc-r" id="calc-r">&nbsp;</div>
+    <div class="calc-g">${CALC_KEYS.map((k) => `<button type="button" data-k="${k}">${k}</button>`).join("")}
+      <button type="button" data-k="copy" title="Copia il risultato">⧉</button><button type="button" class="primary calc-eq" data-k="=">=</button></div>`;
+  place();
+  const inp = calcEl.querySelector("#calc-in"), res = calcEl.querySelector("#calc-r");
+  const fmt = (v) => String(v).replace(".", ",");
+  const preview = () => {
+    try { res.textContent = inp.value.trim() ? "= " + fmt(calcEval(inp.value)) : " "; res.classList.remove("neg"); }
+    catch { res.textContent = "…"; }
+  };
+  const equals = () => {
+    try { inp.value = fmt(calcEval(inp.value)); res.textContent = " "; }
+    catch { res.textContent = "Espressione non valida"; res.classList.add("neg"); }
+  };
+  inp.oninput = preview;
+  inp.onkeydown = (e) => {
+    if (e.key === "Enter") { e.preventDefault(); equals(); }
+    else if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); toggleCalc(); }
+    else if (e.key === "*") { e.preventDefault(); ins("×"); }
+    else if (e.key === "/") { e.preventDefault(); ins("÷"); }
+  };
+  const ins = (s) => {
+    const a = inp.selectionStart ?? inp.value.length, b = inp.selectionEnd ?? a;
+    inp.value = inp.value.slice(0, a) + s + inp.value.slice(b);
+    inp.setSelectionRange(a + s.length, a + s.length); preview();
+  };
+  calcEl.querySelector(".calc-g").onclick = (e) => {
+    const k = e.target.closest("[data-k]")?.dataset.k;
+    if (!k) return;
+    if (k === "C") { inp.value = ""; preview(); }
+    else if (k === "⌫") { inp.value = inp.value.slice(0, -1); preview(); }
+    else if (k === "=") equals();
+    else if (k === "copy") { try { navigator.clipboard.writeText(inp.value.trim() ? fmt(calcEval(inp.value)) : ""); } catch {} }
+    else ins(k);
+    inp.focus();
+  };
+  calcEl.querySelector("#calc-x").onclick = toggleCalc;
+  // trascinamento dall'intestazione
+  const h = calcEl.querySelector(".calc-h");
+  h.onpointerdown = (e) => {
+    if (e.target.closest("button")) return;
+    const r = calcEl.getBoundingClientRect(), dx = e.clientX - r.left, dy = e.clientY - r.top;
+    h.setPointerCapture(e.pointerId);
+    h.onpointermove = (m) => {
+      calcEl.style.left = Math.max(0, Math.min(innerWidth - r.width, m.clientX - dx)) + "px";
+      calcEl.style.top = Math.max(0, Math.min(innerHeight - 40, m.clientY - dy)) + "px";
+      calcEl.style.right = calcEl.style.bottom = "auto"; calcEl.style.transform = "none";
+    };
+    h.onpointerup = () => { h.onpointermove = h.onpointerup = null; };
+  };
+  inp.focus();
+}
+
+// una dialog modale rende inerte tutto il resto: la calcolatrice vi si sposta dentro finché è aperta
+function place() {
+  if (!calcEl) return;
+  const host = dlg.open ? dlg : document.body;
+  if (calcEl.parentNode !== host) host.append(calcEl);
+}
+new MutationObserver(place).observe(dlg, { childList: true });
+dlg.addEventListener("close", place);
+
 async function shell() {
   await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
-    <button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></header>
+    <button id="bc" title="Calcolatrice" aria-label="Calcolatrice">🧮</button><button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz,.json" hidden>`;
   $("#home").onclick = () => (location.hash = "");
   $("#bo").onclick = async () => { await api("/logout", { method: "POST" }); renderLogin(); };
   $("#be").onclick = () => (location.href = "/api/export");
   $("#bx").onclick = () => (location.href = "/api/export.xlsx");
   $("#bj").onclick = () => (location.href = "/api/backup");
+  $("#bc").onclick = toggleCalc;
   $("#bi").onclick = () => $("#file").click();
   $("#file").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
