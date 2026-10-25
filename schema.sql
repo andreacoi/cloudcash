@@ -16,7 +16,15 @@ CREATE TABLE IF NOT EXISTS accounts (
   type TEXT NOT NULL,
   description TEXT NOT NULL DEFAULT '',
   placeholder INTEGER NOT NULL DEFAULT 0,
-  hidden INTEGER NOT NULL DEFAULT 0
+  hidden INTEGER NOT NULL DEFAULT 0,
+  code TEXT NOT NULL DEFAULT '',
+  notes TEXT NOT NULL DEFAULT '',
+  color TEXT NOT NULL DEFAULT '',            -- '#rrggbb' oppure vuoto (predefinito)
+  tax_related INTEGER NOT NULL DEFAULT 0,
+  opening_balance INTEGER NOT NULL DEFAULT 0, -- conto Patrimonio netto dei saldi di apertura
+  limit_high INTEGER,                         -- centesimi, nel segno mostrato (come GnuCash)
+  limit_low INTEGER,
+  limit_subs INTEGER NOT NULL DEFAULT 0       -- il limite include i sottoconti
 );
 CREATE TABLE IF NOT EXISTS transactions (
   id TEXT PRIMARY KEY,

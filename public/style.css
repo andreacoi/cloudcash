@@ -56,3 +56,12 @@ a{color:var(--acc)}
 tbody tr.entry,tbody tr.entry:nth-child(even){background:var(--cream)}
 .entry td{padding:2px 4px}.entry input,.entry select{padding:3px 5px}
 @media(max-width:640px){.entry{display:none}}
+.tabs{display:flex;gap:2px;border-bottom:1px solid #adadad;margin:10px 0 4px}
+.tabs button{border-bottom:0;border-radius:3px 3px 0 0;background:#e4e3e2}
+.tabs button.on{background:#fff;font-weight:600}
+.checks{display:flex;flex-direction:column;gap:2px;margin-top:6px}
+.checks label{color:var(--fg);font-size:14px;margin:2px 0;display:flex;align-items:center;gap:6px}
+.checks input,dialog textarea{width:auto}
+dialog textarea{width:100%}
+.sw{display:inline-block;width:10px;height:10px;border:1px solid #0004;border-radius:2px;margin-right:6px;vertical-align:baseline}
+[hidden]{display:none!important}

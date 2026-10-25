@@ -30,6 +30,15 @@ const j = async (path, opts) => (await api(path, opts)).json();
 let accounts = [], byId = new Map();
 const CREDIT_NORMAL = new Set(["INCOME", "LIABILITY", "EQUITY", "CREDIT", "PAYABLE"]);
 const TYPE_IT = { ROOT: "Radice", ASSET: "Attività", BANK: "Banca", CASH: "Contanti", CREDIT: "Carta di credito", LIABILITY: "Passività", STOCK: "Azioni", MUTUAL: "Fondo", RECEIVABLE: "Crediti", PAYABLE: "Debiti", INCOME: "Entrate", EXPENSE: "Spese", EQUITY: "Patrimonio netto", TRADING: "Trading" };
+const ASSET_LIKE = ["BANK", "CASH", "ASSET", "STOCK", "MUTUAL", "CURRENCY", "CREDIT", "LIABILITY", "RECEIVABLE", "PAYABLE"];
+const SELECTABLE_TYPES = ["BANK", "CASH", "CREDIT", "ASSET", "LIABILITY", "RECEIVABLE", "PAYABLE", "INCOME", "EXPENSE", "EQUITY"];
+function childTypes(parent) {
+  if (parent === "ROOT") return [...ASSET_LIKE, "INCOME", "EXPENSE", "EQUITY", "TRADING"];
+  if (ASSET_LIKE.includes(parent)) return ASSET_LIKE;
+  if (parent === "INCOME" || parent === "EXPENSE") return ["INCOME", "EXPENSE"];
+  return parent === "EQUITY" ? ["EQUITY"] : parent === "TRADING" ? ["TRADING"] : [];
+}
+const centsStr = (c) => (c === null || c === undefined ? "" : (c / 100).toFixed(2).replace(".", ","));
 const COLS = { BANK: ["Deposito", "Prelievo"], CASH: ["Ricevuta", "Spesa"], EXPENSE: ["Spesa", "Rimborso"], INCOME: ["Addebito", "Entrata"], ASSET: ["Aumento", "Diminuzione"], LIABILITY: ["Pagamento", "Aumento"], CREDIT: ["Pagamento", "Addebito"], EQUITY: ["Decremento", "Aumento"] };
 const sign = (a) => (CREDIT_NORMAL.has(a.type) ? -1 : 1);
 
@@ -40,7 +49,8 @@ async function loadAccounts() {
   for (const a of accounts) (kids.get(a.parent_id) ?? kids.set(a.parent_id, []).get(a.parent_id)).push(a);
   for (const l of kids.values()) l.sort((a, b) => a.name.localeCompare(b.name, "it"));
   const calc = (a) => (a.total = a.balance + (kids.get(a.id) ?? []).reduce((s, k) => s + calc(k), 0));
-  accounts.filter((a) => !a.parent_id).forEach(calc);
+  const calcToday = (a) => (a.total_today = a.balance_today + (kids.get(a.id) ?? []).reduce((s, k) => s + calcToday(k), 0));
+  accounts.filter((a) => !a.parent_id).forEach((a) => { calc(a); calcToday(a); });
   for (const a of accounts) a.kids = kids.get(a.id) ?? [];
   const full = (a) => (a.parent_id && byId.get(a.parent_id).type !== "ROOT" ? full(byId.get(a.parent_id)) + ":" : "") + a.name;
   for (const a of accounts) a.full = a.type === "ROOT" ? "" : full(a);
@@ -158,14 +168,18 @@ let showHidden = false;
 function viewAccounts() {
   const rows = [];
   (function walk(a, depth) {
-    const key = { name: (x) => x.name, type: (x) => TYPE_IT[x.type] ?? x.type, total: (x) => x.total * sign(x), balance: (x) => x.balance * sign(x) }[accSort.key];
+    const key = { name: (x) => x.name, type: (x) => TYPE_IT[x.type] ?? x.type, total: (x) => x.total * sign(x), balance: (x) => x.balance * sign(x), code: (x) => x.code }[accSort.key];
     for (const k of [...a.kids].sort((x, y) => cmp(key(x), key(y)) * accSort.dir)) {
       if (k.hidden && !showHidden) continue;
-      rows.push(`<tr class="click ${k.hidden ? "hid" : ""}" data-id="${k.id}"><td style="padding-left:${10 + depth * 18}px">${esc(k.name)}${k.placeholder ? ' <span class="mut">·segnaposto</span>' : ""}</td>
+      // limiti di saldo (come GnuCash): avviso se il saldo di oggi esce dall'intervallo
+      const lv = (k.limit_subs ? k.total_today : k.balance_today) * sign(k);
+      const warn = (k.limit_high !== null && lv > k.limit_high) || (k.limit_low !== null && lv < k.limit_low);
+      rows.push(`<tr class="click ${k.hidden ? "hid" : ""}" data-id="${k.id}"><td style="padding-left:${10 + depth * 18}px">${k.color ? `<span class="sw" style="background:${esc(k.color)}"></span>` : ""}${esc(k.name)}${k.placeholder ? ' <span class="mut">·segnaposto</span>' : ""}</td>
         <td class="hide-sm">${TYPE_IT[k.type] ?? k.type}</td>
+        <td class="hide-md mut">${esc(k.code)}</td>
         <td class="hide-md">${esc(k.description)}</td>
         <td class="num hide-md ${k.balance * sign(k) < 0 ? "neg" : ""}">${k.placeholder && !k.balance ? "" : money(k.balance * sign(k))}</td>
-        <td class="num ${k.total * sign(k) < 0 ? "neg" : ""}">${money(k.total * sign(k))}</td>
+        <td class="num ${k.total * sign(k) < 0 || warn ? "neg" : ""}">${warn ? '<span title="Il saldo supera i limiti impostati">⚠ </span>' : ""}${money(k.total * sign(k))}</td>
         <td class="num"><button class="link" data-edit="${k.id}">modifica</button></td></tr>`);
       walk(k, depth + 1);
     }
@@ -173,7 +187,7 @@ function viewAccounts() {
   $("#main").innerHTML = `<div class="bar"><h2>Piano dei conti</h2>
       <label class="mut"><input type="checkbox" id="sh" style="width:auto" ${showHidden ? "checked" : ""}> nascosti</label>
       <button class="primary" id="na">Nuovo conto</button></div>
-    <div class="card"><table><thead><tr>${sortTh("Conto", "name", accSort)}${sortTh("Tipo", "type", accSort, "hide-sm")}<th class="hide-md">Descrizione</th>${sortTh("Saldo", "balance", accSort, "num hide-md")}${sortTh("Totale", "total", accSort, "num")}<th></th></tr></thead><tbody>${rows.join("") || '<tr><td colspan="6" class="mut">Nessun conto. Importa un file .gnucash o creane uno.</td></tr>'}</tbody></table></div>`;
+    <div class="card"><table><thead><tr>${sortTh("Conto", "name", accSort)}${sortTh("Tipo", "type", accSort, "hide-sm")}${sortTh("Codice", "code", accSort, "hide-md")}<th class="hide-md">Descrizione</th>${sortTh("Saldo", "balance", accSort, "num hide-md")}${sortTh("Totale", "total", accSort, "num")}<th></th></tr></thead><tbody>${rows.join("") || '<tr><td colspan="7" class="mut">Nessun conto. Importa un file .gnucash o creane uno.</td></tr>'}</tbody></table></div>`;
   bindSort(accSort, "accSort", viewAccounts);
   $("#sh").onchange = (e) => { showHidden = e.target.checked; saveSetting("showHidden", showHidden); viewAccounts(); };
   $("#na").onclick = () => accountDialog();
@@ -191,24 +205,108 @@ function accountOptions(selected, { onlyPostable = false, exclude = null } = {})
 
 function accountDialog(acc) {
   const isNew = !acc;
-  const a = acc ?? { name: "", type: "EXPENSE", parent_id: root().id, description: "", placeholder: 0, hidden: 0 };
-  dlg.innerHTML = `<form method="dialog" id="af"><h3>${isNew ? "Nuovo conto" : "Modifica conto"}</h3>
-    <label>Nome</label><input name="name" value="${esc(a.name)}" required>
-    <div class="row"><div><label>Tipo</label><select name="type">${Object.keys(TYPE_IT).filter((t) => t !== "ROOT").map((t) => `<option value="${t}" ${t === a.type ? "selected" : ""}>${TYPE_IT[t]}</option>`).join("")}</select></div>
-    <div><label>Conto padre</label><select name="parent_id">${accountOptions(a.parent_id, { exclude: acc?.id })}</select></div></div>
-    <label>Descrizione</label><input name="description" value="${esc(a.description)}">
-    <label><input type="checkbox" name="placeholder" style="width:auto" ${a.placeholder ? "checked" : ""}> Segnaposto (non accetta movimenti)</label>
-    <label><input type="checkbox" name="hidden" style="width:auto" ${a.hidden ? "checked" : ""}> Nascosto</label>
+  const a = acc ?? { name: "", code: "", type: "EXPENSE", parent_id: root().id, description: "", notes: "", color: "", placeholder: 0, hidden: 0, tax_related: 0, opening_balance: 0, limit_high: null, limit_low: null, limit_subs: 0 };
+  let color = a.color;
+  const today0 = lastDate ?? today();
+  const ck = (v) => (v ? "checked" : "");
+  dlg.innerHTML = `<form method="dialog" id="af"><h3 id="at">${isNew ? "Nuovo conto" : "Modifica conto"}</h3>
+    <div class="tabs"><button type="button" class="on" data-t="g">Generale</button><button type="button" data-t="m">Altre proprietà</button>${isNew ? '<button type="button" data-t="o">Saldo iniziale</button>' : ""}</div>
+
+    <div data-tab="g">
+      <div class="row"><div><label>Nome del conto</label><input name="name" value="${esc(a.name)}" required autocomplete="off"></div>
+      <div style="flex:.4"><label>Codice</label><input name="code" value="${esc(a.code)}" autocomplete="off"></div></div>
+      <label>Descrizione</label><input name="description" value="${esc(a.description)}">
+      <div class="row"><div><label>Conto padre</label><select name="parent_id" size="1">${accountOptions(a.parent_id, { exclude: acc?.id })}</select></div>
+      <div><label>Tipo di conto</label><select name="type"></select></div></div>
+      <div class="row"><div><label>Colore</label><div class="row" style="align-items:center"><input type="color" id="co" value="${color || "#edeceb"}" style="flex:none;width:56px;padding:1px"><button type="button" id="cd">Predefinito</button></div></div><div></div></div>
+      <label>Note</label><textarea name="notes" rows="3">${esc(a.notes)}</textarea>
+      <div class="checks">
+        <label><input type="checkbox" name="placeholder" ${ck(a.placeholder)}> Segnaposto <span class="mut">(accetta movimenti solo nei sottoconti)</span></label>
+        <label><input type="checkbox" name="hidden" ${ck(a.hidden)}> Nascosto</label>
+        <label id="obl"><input type="checkbox" name="opening_balance" ${ck(a.opening_balance)}> Conto dei saldi di apertura <span class="mut">(uno solo)</span></label>
+        <label><input type="checkbox" name="tax_related" ${ck(a.tax_related)}> Rilevante ai fini fiscali</label>
+      </div>
+    </div>
+
+    <div data-tab="m" hidden>
+      <p class="mut">Mostra un avviso nel piano dei conti quando il saldo di oggi esce dall'intervallo. Lascia vuoto per nessun avviso.</p>
+      <div class="row"><div><label>Limite di saldo superiore</label><input name="limit_high" inputmode="decimal" value="${centsStr(a.limit_high)}"></div>
+      <div><label>Limite di saldo inferiore</label><input name="limit_low" inputmode="decimal" value="${centsStr(a.limit_low)}"></div></div>
+      <div class="checks"><label><input type="checkbox" name="limit_subs" ${ck(a.limit_subs)}> Includi i sottoconti</label></div>
+    </div>
+
+    ${isNew ? `<div data-tab="o" hidden>
+      <p class="mut" id="onote">Se il conto parte con un saldo, viene registrata una transazione di apertura.</p>
+      <div id="ofields"><div class="row"><div><label>Saldo</label><input name="ob" inputmode="decimal" placeholder="0,00"></div>
+      <div><label>Data</label><input type="date" name="od" value="${today0}"></div></div>
+      <label>Contropartita</label>
+      <div class="checks"><label><input type="radio" name="om" value="equity" checked> Usa il conto «Saldi di apertura» (Patrimonio netto)</label>
+      <label><input type="radio" name="om" value="account"> Scegli un conto di trasferimento</label></div>
+      <select name="ot" disabled><option value="">—</option>${accountOptions(null, { onlyPostable: true })}</select></div>
+    </div>` : ""}
+
     <div class="err" id="ae"></div>
     <div class="foot">${isNew ? "" : '<button type="button" class="danger" id="ad">Elimina</button>'}<span class="sp"></span><button type="button" id="ax">Annulla</button><button class="primary">Salva</button></div></form>`;
+
+  const form = $("#af"), el = (n) => form.elements[n];
+  // schede
+  dlg.querySelectorAll(".tabs button").forEach((b) => (b.onclick = () => {
+    dlg.querySelectorAll(".tabs button").forEach((x) => x.classList.toggle("on", x === b));
+    dlg.querySelectorAll("[data-tab]").forEach((t) => (t.hidden = t.dataset.tab !== b.dataset.t));
+  }));
+  // il tipo dipende dal padre (stesse regole di GnuCash); se il tipo attuale non è più ammesso passa al primo valido
+  const refreshTypes = () => {
+    const ptype = byId.get(el("parent_id").value)?.type ?? "ROOT";
+    const ok = childTypes(ptype), cur = el("type").value || a.type;
+    const list = SELECTABLE_TYPES.filter((t) => ok.includes(t));
+    if (ok.includes(cur) && !list.includes(cur)) list.push(cur); // tipo esistente non selezionabile (es. Azioni)
+    el("type").innerHTML = list.map((t) => `<option value="${t}" ${t === cur ? "selected" : ""}>${TYPE_IT[t] ?? t}</option>`).join("");
+    refreshFlags();
+  };
+  const refreshFlags = () => {
+    const eq = el("type").value === "EQUITY";
+    $("#obl").style.display = eq ? "" : "none";
+    if (!eq) el("opening_balance").checked = false;
+    if (isNew) {
+      const off = eq || el("placeholder").checked;
+      $("#ofields").hidden = off;
+      $("#onote").textContent = off ? "Un conto Patrimonio netto o segnaposto non può avere un saldo iniziale." : "Se il conto parte con un saldo, viene registrata una transazione di apertura. Il saldo va inserito nel segno mostrato nel piano dei conti.";
+    }
+  };
+  el("parent_id").onchange = refreshTypes;
+  el("type").onchange = refreshFlags; el("placeholder").onchange = refreshFlags;
+  el("type").value = a.type; refreshTypes();
+  $("#co").oninput = (e) => (color = e.target.value);
+  $("#cd").onclick = () => { color = ""; $("#co").value = "#edeceb"; };
+  if (isNew) form.querySelectorAll("[name=om]").forEach((r) => (r.onchange = () => (el("ot").disabled = form.querySelector("[name=om]:checked").value !== "account")));
+
   dlg.showModal();
   $("#ax").onclick = () => dlg.close();
-  $("#af").onsubmit = async (e) => {
+  form.onsubmit = async (e) => {
     e.preventDefault();
-    const f = new FormData(e.target);
-    const body = { name: f.get("name"), type: f.get("type"), parent_id: f.get("parent_id"), description: f.get("description"), placeholder: f.has("placeholder"), hidden: f.has("hidden") };
-    try { await api(isNew ? "/accounts" : "/accounts/" + acc.id, { json: body, method: isNew ? "POST" : "PUT" }); dlg.close(); route(); }
-    catch (err) { $("#ae").textContent = err.message; }
+    const lim = (n) => (el(n).value.trim() === "" ? null : parseAmount(el(n).value));
+    const body = { name: el("name").value, code: el("code").value, description: el("description").value, parent_id: el("parent_id").value, type: el("type").value,
+      color, notes: el("notes").value, placeholder: el("placeholder").checked, hidden: el("hidden").checked, tax_related: el("tax_related").checked,
+      opening_balance: el("opening_balance").checked, limit_high: lim("limit_high"), limit_low: lim("limit_low"), limit_subs: el("limit_subs").checked };
+    if ([body.limit_high, body.limit_low].some(Number.isNaN)) return ($("#ae").textContent = "Limite di saldo non valido");
+    if (isNew && !$("#ofields").hidden) {
+      const amount = parseAmount(el("ob").value);
+      if (Number.isNaN(amount)) return ($("#ae").textContent = "Saldo iniziale non valido");
+      if (amount) {
+        const mode = form.querySelector("[name=om]:checked").value;
+        if (mode === "account" && !el("ot").value) return ($("#ae").textContent = "Scegli il conto di trasferimento");
+        body.opening = { amount, date: el("od").value, mode, transfer_id: el("ot").value };
+        lastDate = el("od").value;
+      }
+    }
+    try { await api(isNew ? "/accounts" : "/accounts/" + acc.id, { json: body, method: isNew ? "POST" : "PUT" }); }
+    catch (err) {
+      // sottoconti incompatibili col nuovo tipo: come GnuCash, si chiede conferma e si convertono
+      if (err.status === 409 && confirm(err.message + ".\nConvertirli al nuovo tipo?")) {
+        try { await api("/accounts/" + acc.id, { json: { ...body, retype_children: true }, method: "PUT" }); } catch (e2) { return ($("#ae").textContent = e2.message); }
+      } else return ($("#ae").textContent = err.message);
+    }
+    dlg.close(); route();
   };
   if (!isNew) $("#ad").onclick = () => deleteAccount(acc);
 }

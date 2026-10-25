@@ -2,6 +2,7 @@ import { Hono, Context } from "hono";
 import { getCookie, setCookie, deleteCookie } from "hono/cookie";
 import { parseGnucash, exportGnucash, Book } from "./gnucash";
 import { buildXlsx } from "./xlsx";
+import { ACC_TYPES, CREDIT_NORMAL, childTypes, typeGroup, fullName } from "./accounts";
 
 type Env = { Bindings: { DB: D1Database; ASSETS: Fetcher }; Variables: { userId: number } };
 const app = new Hono<Env>();
@@ -113,28 +114,86 @@ app.put("/api/settings/:key", async (c) => {
 });
 
 // ---------- conti ----------
-const ACC_TYPES = ["ASSET", "BANK", "CASH", "CREDIT", "LIABILITY", "STOCK", "MUTUAL", "RECEIVABLE", "PAYABLE", "INCOME", "EXPENSE", "EQUITY", "TRADING"];
+const ACC_COLS = "id,parent_id,name,type,description,placeholder,hidden,code,notes,color,tax_related,opening_balance,limit_high,limit_low,limit_subs";
+const ACC_PH = ACC_COLS.split(",").map(() => "?").join(",");
+const accRow = (a: any) => [a.id, a.parent_id ?? null, a.name, a.type, a.description ?? "", a.placeholder ? 1 : 0, a.hidden ? 1 : 0, a.code ?? "", a.notes ?? "",
+  a.color ?? "", a.tax_related ? 1 : 0, a.opening_balance ? 1 : 0, a.limit_high ?? null, a.limit_low ?? null, a.limit_subs ? 1 : 0];
 
 app.get("/api/accounts", async (c) => {
+  const today = new Date().toISOString().slice(0, 10);
   const [accs, bal] = await c.env.DB.batch([
     c.env.DB.prepare("SELECT * FROM accounts"),
-    c.env.DB.prepare("SELECT account_id, SUM(amount) balance, COUNT(*) n FROM splits GROUP BY account_id"),
+    // balance_today: solo movimenti fino a oggi (serve ai limiti di saldo, come GnuCash)
+    c.env.DB.prepare("SELECT s.account_id, SUM(s.amount) balance, COUNT(*) n, SUM(CASE WHEN t.date_posted<=? THEN s.amount ELSE 0 END) balance_today FROM splits s JOIN transactions t ON t.id=s.tx_id GROUP BY s.account_id").bind(today),
   ]);
   const b = new Map((bal.results as any[]).map((r) => [r.account_id, r]));
-  return c.json((accs.results as any[]).map((a) => ({ ...a, balance: b.get(a.id)?.balance ?? 0, n: b.get(a.id)?.n ?? 0 })));
+  return c.json((accs.results as any[]).map((a) => ({ ...a, balance: b.get(a.id)?.balance ?? 0, balance_today: b.get(a.id)?.balance_today ?? 0, n: b.get(a.id)?.n ?? 0 })));
 });
 
-async function validateAccount(c: Context<Env>, body: any, selfId?: string) {
-  if (!body.name?.trim()) return "Nome obbligatorio";
-  if (!ACC_TYPES.includes(body.type)) return "Tipo conto non valido";
-  if (!body.parent_id) return "Conto padre obbligatorio";
-  const p = await c.env.DB.prepare("SELECT id FROM accounts WHERE id=?").bind(body.parent_id).first();
-  if (!p) return "Conto padre inesistente";
-  // evita cicli: il padre non può essere un discendente di se stesso
-  for (let cur: string | null = body.parent_id; selfId && cur; ) {
+const isCents = (v: any) => v === null || v === undefined || Number.isInteger(v);
+
+// Validazioni equivalenti a gnc_common_ok di GnuCash (dialog-account.c). Restituisce il messaggio d'errore, oppure null.
+async function validateAccount(c: Context<Env>, b: any, selfId?: string) {
+  const all = (await c.env.DB.prepare("SELECT id,parent_id,name,type,opening_balance FROM accounts").all<any>()).results;
+  const byId = new Map(all.map((a: any) => [a.id, a]));
+  b.name = String(b.name ?? "").trim();
+  if (!b.name) return "L'account deve avere un nome";
+  if (b.name.includes(":")) return "Il nome non può contenere il carattere «:»";
+  if (!ACC_TYPES.includes(b.type)) return "Tipo conto non valido";
+  const parent = byId.get(b.parent_id);
+  if (!b.parent_id || !parent) return "Conto padre inesistente";
+  for (let cur: string | null = b.parent_id; selfId && cur; cur = byId.get(cur)?.parent_id ?? null)
     if (cur === selfId) return "Il padre non può essere un discendente del conto";
-    cur = (await c.env.DB.prepare("SELECT parent_id p FROM accounts WHERE id=?").bind(cur).first<{ p: string | null }>())?.p ?? null;
+  if (!childTypes(parent.type).includes(b.type)) return `Un conto di tipo «${b.type}» non può stare sotto un conto di tipo «${parent.type}»`;
+  // nome completo unico
+  const candidate = (parent.type === "ROOT" ? "" : fullName(parent.id, byId) + ":") + b.name;
+  for (const a of all) if (a.id !== selfId && a.type !== "ROOT" && fullName(a.id, byId).toLowerCase() === candidate.toLowerCase()) return "Esiste già un conto con questo nome completo";
+  b.code = String(b.code ?? "").trim(); b.notes = String(b.notes ?? ""); b.description = String(b.description ?? "");
+  if (b.code.length > 50 || b.description.length > 500 || b.notes.length > 5000) return "Testo troppo lungo";
+  b.color = b.color ? String(b.color).toLowerCase() : "";
+  if (b.color && !/^#[0-9a-f]{6}$/.test(b.color)) return "Colore non valido";
+  if (!isCents(b.limit_high) || !isCents(b.limit_low)) return "Limite di saldo non valido";
+  b.limit_high ??= null; b.limit_low ??= null;
+  if (b.limit_high !== null && b.limit_low !== null && b.limit_low >= b.limit_high) return "Il limite inferiore deve essere minore di quello superiore";
+  if (b.opening_balance) {
+    if (b.type !== "EQUITY") return "Solo un conto Patrimonio netto può contenere i saldi di apertura";
+    if (all.some((a: any) => a.opening_balance && a.id !== selfId)) return "Esiste già un conto dei saldi di apertura";
   }
+  return null;
+}
+
+// Il saldo iniziale di GnuCash: una transazione tra il nuovo conto e il conto Saldi di apertura (o un altro conto).
+async function openingStatements(c: Context<Env>, id: string, b: any, stmts: D1PreparedStatement[]) {
+  const o = b.opening;
+  if (!o || !o.amount) return null;
+  if (!Number.isInteger(o.amount)) return "Saldo iniziale non valido";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(o.date ?? "")) return "Data del saldo iniziale non valida";
+  if (b.type === "EQUITY") return "Un conto Patrimonio netto non può avere un saldo iniziale";
+  if (b.placeholder) return "Un conto segnaposto non può avere un saldo iniziale";
+  let counter: string;
+  if (o.mode === "account") {
+    const t = await c.env.DB.prepare("SELECT type,placeholder FROM accounts WHERE id=?").bind(o.transfer_id).first<any>();
+    if (!t || t.type === "ROOT" || t.placeholder) return "Conto di trasferimento non valido";
+    counter = o.transfer_id;
+  } else {
+    // conto Saldi di apertura: quello marcato, altrimenti uno con nome noto, altrimenti lo creo alla radice
+    const eq = (await c.env.DB.prepare("SELECT id,name,opening_balance,parent_id FROM accounts WHERE type='EQUITY'").all<any>()).results;
+    const found = eq.find((a: any) => a.opening_balance) ?? eq.find((a: any) => /^(saldi|bilanci|saldo) d'apertura$|^opening balances?$/i.test(a.name));
+    if (found) counter = found.id;
+    else {
+      const root = await c.env.DB.prepare("SELECT id FROM accounts WHERE type='ROOT'").first<{ id: string }>();
+      counter = newGuid();
+      stmts.push(c.env.DB.prepare(`INSERT INTO accounts (${ACC_COLS}) VALUES (${ACC_PH})`).bind(...accRow({ id: counter, parent_id: root!.id, name: "Saldi di apertura", type: "EQUITY", opening_balance: 1 })));
+    }
+  }
+  // il saldo è nel segno mostrato: per i conti "creditori" (passività, entrate...) positivo = avere
+  const amount = o.amount * (CREDIT_NORMAL.has(b.type) ? -1 : 1);
+  const tx = newGuid();
+  stmts.push(
+    c.env.DB.prepare("INSERT INTO transactions (id,date_posted,date_entered,num,description,notes,details) VALUES (?,?,?,?,?,?,?)").bind(tx, o.date, new Date().toISOString(), "", "Saldo di apertura", "", ""),
+    c.env.DB.prepare("INSERT INTO splits VALUES (?,?,?,?,?,?)").bind(newGuid(), tx, id, amount, "", "n"),
+    c.env.DB.prepare("INSERT INTO splits VALUES (?,?,?,?,?,?)").bind(newGuid(), tx, counter, -amount, "", "n"),
+  );
   return null;
 }
 
@@ -143,21 +202,42 @@ app.post("/api/accounts", async (c) => {
   const err = await validateAccount(c, b);
   if (err) return c.json({ error: err }, 400);
   const id = newGuid();
-  await c.env.DB.prepare("INSERT INTO accounts VALUES (?,?,?,?,?,?,?)")
-    .bind(id, b.parent_id, b.name.trim(), b.type, b.description ?? "", b.placeholder ? 1 : 0, b.hidden ? 1 : 0).run();
+  const stmts = [c.env.DB.prepare(`INSERT INTO accounts (${ACC_COLS}) VALUES (${ACC_PH})`).bind(...accRow({ ...b, id }))];
+  const oerr = await openingStatements(c, id, b, stmts);
+  if (oerr) return c.json({ error: oerr }, 400);
+  await c.env.DB.batch(stmts);
   return c.json({ id });
 });
 
 app.put("/api/accounts/:id", async (c) => {
   const id = c.req.param("id");
   const b = await c.req.json<any>();
-  const cur = await c.env.DB.prepare("SELECT type FROM accounts WHERE id=?").bind(id).first<{ type: string }>();
+  const cur = await c.env.DB.prepare("SELECT type,placeholder FROM accounts WHERE id=?").bind(id).first<{ type: string; placeholder: number }>();
   if (!cur) return c.json({ error: "Conto inesistente" }, 404);
   if (cur.type === "ROOT") return c.json({ error: "Il conto radice non è modificabile" }, 400);
   const err = await validateAccount(c, b, id);
   if (err) return c.json({ error: err }, 400);
-  await c.env.DB.prepare("UPDATE accounts SET parent_id=?,name=?,type=?,description=?,placeholder=?,hidden=? WHERE id=?")
-    .bind(b.parent_id, b.name.trim(), b.type, b.description ?? "", b.placeholder ? 1 : 0, b.hidden ? 1 : 0, id).run();
+
+  const nSplits = (await c.env.DB.prepare("SELECT COUNT(*) n FROM splits WHERE account_id=?").bind(id).first<{ n: number }>())!.n;
+  if (nSplits && typeGroup(cur.type) !== typeGroup(b.type)) return c.json({ error: "Il conto contiene movimenti: il tipo può cambiare solo tra tipi compatibili" }, 400);
+  if (nSplits && b.placeholder && !cur.placeholder) return c.json({ error: "Il conto contiene movimenti e non può diventare segnaposto" }, 400);
+
+  // sottoconti incompatibili con il nuovo tipo: GnuCash chiede conferma e li converte (set_children_types)
+  const all = (await c.env.DB.prepare("SELECT id,parent_id,type FROM accounts").all<any>()).results;
+  const kids = new Map<string, any[]>();
+  for (const a of all) (kids.get(a.parent_id) ?? kids.set(a.parent_id, []).get(a.parent_id)!).push(a);
+  const retype: string[] = [];
+  (function walk(pid: string, ptype: string) {
+    for (const k of kids.get(pid) ?? []) {
+      const t = childTypes(ptype).includes(k.type) ? k.type : (retype.push(k.id), ptype);
+      walk(k.id, t);
+    }
+  })(id, b.type);
+  if (retype.length && !b.retype_children) return c.json({ error: `${retype.length} sottoconti hanno un tipo incompatibile con il nuovo tipo`, retype: retype.length }, 409);
+  const stmts = [c.env.DB.prepare(`UPDATE accounts SET parent_id=?,name=?,type=?,description=?,placeholder=?,hidden=?,code=?,notes=?,color=?,tax_related=?,opening_balance=?,limit_high=?,limit_low=?,limit_subs=? WHERE id=?`)
+    .bind(...accRow({ ...b, id }).slice(1), id)];
+  if (retype.length) stmts.push(c.env.DB.prepare(`UPDATE accounts SET type=? WHERE id IN (${retype.map(() => "?").join(",")})`).bind(b.type, ...retype));
+  await c.env.DB.batch(stmts);
   return c.json({ ok: true });
 });
 
@@ -305,7 +385,7 @@ async function replaceBook(db: D1Database, book: Book, details: (txId: string) =
   await db.batch([
     db.prepare("DELETE FROM splits"), db.prepare("DELETE FROM transactions"),
     db.prepare("UPDATE accounts SET parent_id=NULL"), db.prepare("DELETE FROM accounts"),
-    ...ordered.map((a) => db.prepare("INSERT INTO accounts VALUES (?,?,?,?,?,?,?)").bind(a.id, a.parent_id, a.name, a.type, a.description, a.placeholder, a.hidden)),
+    ...ordered.map((a) => db.prepare(`INSERT INTO accounts (${ACC_COLS}) VALUES (${ACC_PH})`).bind(...accRow(a))),
     ...book.transactions.map((t) => db.prepare("INSERT INTO transactions (id,date_posted,date_entered,num,description,notes,details) VALUES (?,?,?,?,?,?,?)").bind(t.id, t.date_posted, t.date_entered, t.num, t.description, t.notes, details(t.id))),
     ...book.splits.map((s) => db.prepare("INSERT INTO splits VALUES (?,?,?,?,?,?)").bind(s.id, s.tx_id, s.account_id, s.amount, s.memo, s.reconciled)),
   ]);
@@ -345,10 +425,13 @@ app.post("/api/restore", async (c) => {
   const accIds = new Set<string>(), txIds = new Set<string>();
   let roots = 0;
   for (const a of d.accounts) {
-    if (!str(a.id) || !str(a.name) || !ACC_TYPES.concat("ROOT").includes(a.type) || !(a.parent_id === null || str(a.parent_id))) return err("conto malformato");
+    if (!str(a.id) || !str(a.name) || ![...ACC_TYPES, "ROOT"].includes(a.type) || !(a.parent_id === null || str(a.parent_id))) return err("conto malformato");
     if (accIds.has(a.id)) return err("conto duplicato");
     accIds.add(a.id); if (a.type === "ROOT") roots++;
     a.description = str(a.description) ? a.description : ""; a.placeholder = a.placeholder ? 1 : 0; a.hidden = a.hidden ? 1 : 0;
+    for (const k of ["code", "notes", "color"]) a[k] = str(a[k]) ? a[k] : ""; // backup più vecchi non hanno questi campi
+    for (const k of ["limit_high", "limit_low"]) a[k] = Number.isInteger(a[k]) ? a[k] : null;
+    a.tax_related = a.tax_related ? 1 : 0; a.opening_balance = a.opening_balance ? 1 : 0; a.limit_subs = a.limit_subs ? 1 : 0;
   }
   if (roots !== 1) return err("serve esattamente un conto radice");
   if (d.accounts.some((a: any) => a.parent_id !== null && !accIds.has(a.parent_id))) return err("genitore inesistente");

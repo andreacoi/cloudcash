@@ -3,6 +3,8 @@ import { XMLParser } from "fast-xml-parser";
 export interface Account {
   id: string; parent_id: string | null; name: string; type: string;
   description: string; placeholder: number; hidden: number;
+  code?: string; notes?: string; color?: string; tax_related?: number; opening_balance?: number;
+  limit_high?: number | null; limit_low?: number | null; limit_subs?: number; // solo backup JSON, non nel formato GnuCash
 }
 export interface Split { id: string; tx_id: string; account_id: string; amount: number; memo: string; reconciled: string }
 export interface Tx { id: string; date_posted: string; date_entered: string; num: string; description: string; notes: string }
@@ -27,6 +29,18 @@ async function gunzipIfNeeded(buf: ArrayBuffer): Promise<string> {
   return new TextDecoder().decode(u8);
 }
 
+// GnuCash salva il colore come "rgb(r,g,b)" o "#rrggbb"; il valore "Not Set"/predefinito diventa vuoto
+function parseColor(v?: string): string {
+  if (!v) return "";
+  const m = v.match(/^rgb\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*\)$/i);
+  if (m) {
+    const h = m.slice(1, 4).map((x) => Math.min(255, +x).toString(16).padStart(2, "0")).join("");
+    return h === "edeceb" ? "" : "#" + h; // rgb(237,236,235) è il colore predefinito di GnuCash
+  }
+  return /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : "";
+}
+const hexToRgb = (h: string) => `rgb(${[1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16)).join(",")})`;
+
 function slotValue(slots: any, key: string): string | undefined {
   for (const s of arr<any>(slots?.slot)) if (txt(s["slot:key"]) === key) return txt(s["slot:value"]);
   return undefined;
@@ -50,6 +64,11 @@ export async function parseGnucash(buf: ArrayBuffer): Promise<Book> {
       description: txt(a["act:description"]),
       placeholder: slotValue(a["act:slots"], "placeholder") === "true" ? 1 : 0,
       hidden: slotValue(a["act:slots"], "hidden") === "true" ? 1 : 0,
+      code: txt(a["act:code"]),
+      notes: slotValue(a["act:slots"], "notes") ?? "",
+      color: parseColor(slotValue(a["act:slots"], "color")),
+      tax_related: ["true", "1"].includes(slotValue(a["act:slots"], "tax-related") ?? "") ? 1 : 0,
+      opening_balance: slotValue(a["act:slots"], "equity-type") === "opening-balance" ? 1 : 0,
     });
   }
   const accIds = new Set(accounts.map((a) => a.id));
@@ -111,12 +130,16 @@ export async function exportGnucash(book: Book, bookId: string): Promise<Uint8Ar
     const slots: string[] = [];
     if (a.placeholder) slots.push(slotXml("placeholder", "string", "true"));
     if (a.hidden) slots.push(slotXml("hidden", "string", "true"));
+    if (a.notes) slots.push(slotXml("notes", "string", esc(a.notes)));
+    if (/^#[0-9a-f]{6}$/i.test(a.color ?? "")) slots.push(slotXml("color", "string", hexToRgb(a.color!)));
+    if (a.tax_related) slots.push(slotXml("tax-related", "string", "true"));
+    if (a.opening_balance) slots.push(slotXml("equity-type", "string", "opening-balance"));
     o.push(`<gnc:account version="2.0.0">
 <act:name>${esc(a.name)}</act:name>
 <act:id type="guid">${guid(a.id)}</act:id>
 <act:type>${a.type}</act:type>
 <act:commodity>${cur}</act:commodity>
-<act:commodity-scu>100</act:commodity-scu>${a.description ? `\n<act:description>${esc(a.description)}</act:description>` : ""}${slots.length ? `\n<act:slots>${slots.join("")}</act:slots>` : ""}${a.parent_id ? `\n<act:parent type="guid">${guid(a.parent_id)}</act:parent>` : ""}
+<act:commodity-scu>100</act:commodity-scu>${a.code ? `\n<act:code>${esc(a.code)}</act:code>` : ""}${a.description ? `\n<act:description>${esc(a.description)}</act:description>` : ""}${slots.length ? `\n<act:slots>${slots.join("")}</act:slots>` : ""}${a.parent_id ? `\n<act:parent type="guid">${guid(a.parent_id)}</act:parent>` : ""}
 </gnc:account>`);
   }
 

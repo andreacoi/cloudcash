@@ -1,0 +1,9 @@
+-- Solo per database creati prima di questa versione
+ALTER TABLE accounts ADD COLUMN code TEXT NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN notes TEXT NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN color TEXT NOT NULL DEFAULT '';
+ALTER TABLE accounts ADD COLUMN tax_related INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN opening_balance INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE accounts ADD COLUMN limit_high INTEGER;
+ALTER TABLE accounts ADD COLUMN limit_low INTEGER;
+ALTER TABLE accounts ADD COLUMN limit_subs INTEGER NOT NULL DEFAULT 0;
