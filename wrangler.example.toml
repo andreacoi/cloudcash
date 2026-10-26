@@ -1,0 +1,37 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Configurazione di CloudCash per Cloudflare (Wrangler)
+#
+# COME SI USA
+#   1. Copia questo file con il nome  wrangler.toml :
+#          cp wrangler.example.toml wrangler.toml
+#   2. Crea il database:   npx wrangler d1 create cloudcash
+#      Wrangler stampa un blocco con un "database_id": copialo qui sotto.
+#   3. Salva e prosegui con la guida nel README.md
+#
+# Il file  wrangler.toml  è nel .gitignore: contiene i dati del TUO account
+# e non va mai pubblicato su GitHub. Questo file di esempio invece sì.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Nome dell'app su Cloudflare. L'indirizzo finale sarà:
+#     https://<name>.<il-tuo-sottodominio>.workers.dev
+# Puoi cambiarlo (solo lettere minuscole, numeri e trattini): es. "soldi-di-casa".
+name = "cloudcash"
+
+# ── NON MODIFICARE le righe qui sotto ────────────────────────────────────────
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+# Dove si trovano le pagine del sito (HTML, CSS, JavaScript, immagini).
+# Solo le richieste che iniziano con /api/ passano dal codice del server.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*"]
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Il database (D1, SQLite gratuito di Cloudflare) dove vengono salvati conti e movimenti.
+[[d1_databases]]
+binding = "DB"                 # NON modificare: il codice cerca esattamente questo nome
+database_name = "cloudcash"    # il nome scelto con "wrangler d1 create" (di norma resta così)
+database_id = "INCOLLA-QUI-IL-DATABASE-ID"   # ← sostituisci, tenendo le virgolette
+# Esempio di come appare un id:  "8f3c2a1e-0b7d-4c55-9a41-2d6e5b7c9f10"
