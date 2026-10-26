@@ -43,12 +43,10 @@ Ci vogliono circa 15 minuti. Non servono competenze di programmazione: basta cop
 ### 1. Scarica il progetto
 
 ```bash
-git clone https://github.com/<utente>/cloudcash.git
+git clone https://github.com/andreacoi/cloudcash.git
 cd cloudcash
 npm install
 ```
-
-*(sostituisci `<utente>/cloudcash` con l'indirizzo di questo repository su GitHub)*
 
 ### 2. Collega il terminale al tuo account Cloudflare
 
