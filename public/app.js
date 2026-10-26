@@ -659,9 +659,9 @@ async function txDialog(id, acc) {
   const draw = () => {
     $("#sp").innerHTML = splits.map((s, i) => `<tr>
       <td><select data-i="${i}" data-f="account_id"><option value="">—</option>${accountOptions(s.account_id, { onlyPostable: true })}</select></td>
-      <td><input data-i="${i}" data-f="memo" value="${esc(s.memo)}"></td>
-      <td><input class="num" inputmode="decimal" data-i="${i}" data-f="d" value="${s.amount > 0 ? (s.amount / 100).toFixed(2).replace(".", ",") : ""}"></td>
-      <td><input class="num" inputmode="decimal" data-i="${i}" data-f="c" value="${s.amount < 0 ? (-s.amount / 100).toFixed(2).replace(".", ",") : ""}"></td>
+      <td><input data-i="${i}" data-f="memo" placeholder="Memo" value="${esc(s.memo)}"></td>
+      <td><input class="num" inputmode="decimal" placeholder="Dare" data-i="${i}" data-f="d" value="${s.amount > 0 ? (s.amount / 100).toFixed(2).replace(".", ",") : ""}"></td>
+      <td><input class="num" inputmode="decimal" placeholder="Avere" data-i="${i}" data-f="c" value="${s.amount < 0 ? (-s.amount / 100).toFixed(2).replace(".", ",") : ""}"></td>
       <td>${splits.length > 2 ? `<button type="button" class="link danger" data-rm="${i}">✕</button>` : ""}</td></tr>`).join("");
     diff();
   };

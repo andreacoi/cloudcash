@@ -46,7 +46,7 @@ html[data-theme="bs5"][data-dark="1"]{color-scheme:dark;
   --dlg:#212529;--dlg-b:#495057;--tab:#2b3035;--tab-on:#212529;--sw-b:#fff4}
 
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--fg);font:var(--fs)/1.35 var(--font)}
+body{overflow-x:hidden;margin:0;background:var(--bg);color:var(--fg);font:var(--fs)/1.35 var(--font)}
 header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--hbar);border-bottom:1px solid var(--hborder);position:sticky;top:0;z-index:5}
 header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:var(--htitle)}
 header .sp{flex:1}
@@ -84,7 +84,7 @@ tbody tr.click:hover .mut,tbody tr.click:hover a,tbody tr.click:hover .link{colo
 dialog{border:1px solid var(--dlg-b);border-radius:var(--dlg-r);background:var(--dlg);color:var(--fg);padding:18px;width:min(780px,96vw);max-height:94vh;overflow:auto}
 dialog::backdrop{background:#0006}
 dialog table{background:var(--card)}
-.row{display:flex;gap:8px}.row>*{flex:1}
+.row{display:flex;gap:8px}.row>*{flex:1;min-width:0}
 .splits td{padding:3px;border:0;background:none}
 .splits tbody tr{background:none!important}
 .foot{display:flex;gap:8px;margin-top:16px;align-items:center}
@@ -95,6 +95,16 @@ a{color:var(--acc)}
 .rec{display:inline-block;min-width:1.2em;text-align:center}
 .only-sm{display:none}.small{font-size:12px}
 @media(max-width:640px){
+  /* iOS zooma (e poi scorre di lato) sui campi con font < 16px */
+  input,select,textarea{font-size:16px}
+  .row{flex-wrap:wrap}.row>*{flex:1 1 140px}
+  /* righe dei movimenti nella modale: una "scheda" per riga invece di 5 colonne */
+  .splits thead{display:none}
+  .splits,.splits tbody{display:block}
+  .splits tr{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;padding:8px 0;border-bottom:1px solid var(--dlg-b)}
+  .splits td{display:block;padding:0}
+  .splits td:nth-child(1),.splits td:nth-child(2){grid-column:1/-1}
+  .splits td:nth-child(5){grid-column:3;grid-row:3}
   .burger{display:inline-block}
   header nav{display:none;position:absolute;top:100%;right:0;min-width:180px;flex-direction:column;gap:0;background:var(--hbar);border:1px solid var(--hborder);border-top:0;box-shadow:0 4px 10px rgba(0,0,0,.25)}
   header nav.open{display:flex}
