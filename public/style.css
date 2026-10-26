@@ -95,6 +95,13 @@ a{color:var(--acc)}
 .rec{display:inline-block;min-width:1.2em;text-align:center}
 .only-sm{display:none}.small{font-size:12px}
 @media(max-width:640px){
+  /* registro: colonne a larghezza fissa, la descrizione si adatta e va a capo */
+  .card{overflow-x:hidden!important}
+  table.reg{table-layout:fixed}
+  .reg th:first-child{width:78px}
+  .reg th.only-sm,.reg th:last-child{width:26%}
+  .reg th.num:not(.only-sm):not(:last-child){width:30px}
+  .reg td{overflow-wrap:anywhere}
   /* iOS zooma (e poi scorre di lato) sui campi con font < 16px */
   input,select,textarea{font-size:16px}
   .row{flex-wrap:wrap}.row>*{flex:1 1 140px}

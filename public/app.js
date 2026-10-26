@@ -543,7 +543,7 @@ async function viewRegister(acc) {
   $("#main").innerHTML = `<div class="bar"><h2><span class="crumb" id="back">Conti</span> › ${esc(acc.full)}</h2>
       <label class="mut"><input type="checkbox" id="sr" style="width:auto" ${showRec ? "checked" : ""}> colonna R</label>
       <button class="primary" id="nt" ${acc.placeholder ? "disabled" : ""}>Nuova transazione</button></div>
-    <div class="card" style="overflow-x:auto"><table><thead><tr>${sortTh("Data", "date", regSort)}${sortTh("N.", "num", regSort, "hide-sm")}${sortTh("Descrizione", "description", regSort)}${sortTh("Trasferimento", "other", regSort, "hide-sm")}${showRec ? sortTh("R", "rec", regSort, "num") : ""}
+    <div class="card" style="overflow-x:auto"><table class="reg"><thead><tr>${sortTh("Data", "date", regSort)}${sortTh("N.", "num", regSort, "hide-sm")}${sortTh("Descrizione", "description", regSort)}${sortTh("Trasferimento", "other", regSort, "hide-sm")}${showRec ? sortTh("R", "rec", regSort, "num") : ""}
       <th class="num hide-sm" data-sort="amount" style="cursor:pointer">${cd}</th><th class="num hide-sm" data-sort="amount" style="cursor:pointer">${cc}</th>${sortTh("Importo", "amount", regSort, "num only-sm")}${sortTh("Saldo", "balance", regSort, "num")}</tr></thead>
       <tbody>${entryPos === "top" ? entry + lines.join("") : lines.join("") + entry}</tbody></table></div>
     <div class="err" id="ee"></div><datalist id="descs">${[...new Set(rows.map((r) => r.description))].map((d) => `<option value="${esc(d)}">`).join("")}</datalist>`;
