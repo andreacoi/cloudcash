@@ -257,15 +257,53 @@ async function loadSettings() {
 
 // ---------- aspetto: tema (GnuCash / Bootstrap 5) e modalità notte (sì / no / auto) ----------
 const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5" };
-const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (segue il sistema)" };
+const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (sistema, altrimenti tramonto)" };
 const darkMq = matchMedia("(prefers-color-scheme: dark)");
+const lightMq = matchMedia("(prefers-color-scheme: light)");
+const deviceHasScheme = () => darkMq.matches || lightMq.matches; // il dispositivo comunica una preferenza chiaro/scuro
+
+// Alba e tramonto (equazione dell'alba, formule NOAA semplificate). Ritorna gli intervalli di luce [alba, tramonto] in ms.
+function sunIntervals(lat, lon, now) {
+  const R = Math.PI / 180, sin = (x) => Math.sin(x * R), cos = (x) => Math.cos(x * R);
+  const jd = now / 86400000 + 2440587.5, out = [];
+  for (let k = -1; k <= 1; k++) {
+    const n = Math.ceil(jd - 2451545.0 + 0.0008) + k, js = n - lon / 360;
+    const M = (357.5291 + 0.98560028 * js) % 360;
+    const C = 1.9148 * sin(M) + 0.02 * sin(2 * M) + 0.0003 * sin(3 * M);
+    const lam = (M + C + 180 + 102.9372) % 360;
+    const transit = 2451545.0 + js + 0.0053 * sin(M) - 0.0069 * sin(2 * lam);
+    const sd = sin(lam) * sin(23.4397), cd = Math.sqrt(1 - sd * sd);
+    const x = (sin(-0.833) - sin(lat) * sd) / (cos(lat) * cd);
+    if (x >= 1) continue;                                   // notte polare: nessuna luce
+    if (x <= -1) return [[-Infinity, Infinity]];            // sole di mezzanotte
+    const w = Math.acos(x) / R / 360, ms = (j) => (j - 2440587.5) * 86400000;
+    out.push([ms(transit - w), ms(transit + w)]);
+  }
+  return out;
+}
+const GEO_DEFAULT = { lat: 41.9, lon: 12.5 }; // Roma, finché non conosciamo la posizione
+let geo = null;
+try { geo = JSON.parse(localStorage.getItem("geo")); } catch {}
+async function ensureGeo() { // posizione approssimativa dalla rete di Cloudflare: niente permessi da chiedere
+  if (geo && Date.now() - geo.t < 7 * 864e5) return;
+  try { const g = await api("/location"); if (g.lat != null) { geo = { lat: g.lat, lon: g.lon, t: Date.now() }; try { localStorage.setItem("geo", JSON.stringify(geo)); } catch {} applyLook(); } } catch {}
+}
+function autoDark() {
+  if (deviceHasScheme()) return darkMq.matches; // 1) il dispositivo ha la sua modalità automatica: la seguiamo
+  const g = geo ?? GEO_DEFAULT, now = Date.now(); // 2) altrimenti: notte = prima dell'alba o dopo il tramonto
+  return !sunIntervals(g.lat, g.lon, now).some(([r, s]) => now >= r && now < s);
+}
 function applyLook() {
   const mode = MODES[settings.colorMode] ? settings.colorMode : "no";
   const root = document.documentElement;
   root.dataset.theme = THEMES[settings.theme] ? settings.theme : "gnucash";
-  root.dataset.dark = mode === "yes" || (mode === "auto" && darkMq.matches) ? "1" : "0";
+  const dark = mode === "yes" || (mode === "auto" && autoDark());
+  root.dataset.dark = dark ? "1" : "0";
+  if (mode === "auto") { try { localStorage.setItem("lastDark", dark ? "1" : "0"); } catch {} ensureGeo(); }
 }
 darkMq.addEventListener("change", applyLook); // in modalità automatica segue il sistema in tempo reale
+lightMq.addEventListener("change", applyLook);
+setInterval(() => settings.colorMode === "auto" && applyLook(), 60000); // senza preferenza di sistema segue il sole
 
 // schede dentro la modale: pulsanti .tabs [data-t] che mostrano il blocco [data-tab] corrispondente
 function bindTabs(onChange) {

@@ -83,6 +83,13 @@ app.use("/api/*", async (c, next) => {
 
 app.get("/api/me", (c) => c.json({ ok: true }));
 
+// posizione approssimativa del client (da Cloudflare), usata per alba/tramonto della modalità notte automatica
+app.get("/api/location", (c) => {
+  const cf = (c.req.raw as { cf?: { latitude?: string; longitude?: string } }).cf;
+  const lat = parseFloat(cf?.latitude ?? ""), lon = parseFloat(cf?.longitude ?? "");
+  return c.json(Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : { lat: null, lon: null });
+});
+
 app.post("/api/password", async (c) => {
   const { current, next } = await c.req.json<{ current: string; next: string }>();
   if (!next || next.length < 8) return c.json({ error: "Nuova password troppo corta (min. 8)" }, 400);
