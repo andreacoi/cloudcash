@@ -87,8 +87,6 @@ Apri `wrangler.toml` con un editor di testo qualsiasi (Blocco Note va benissimo)
 `INCOLLA-QUI-IL-DATABASE-ID` con l'id copiato prima, **lasciando le virgolette**. Se vuoi, cambia anche `name`
 (sarà l'inizio dell'indirizzo del sito). Salva.
 
-> `wrangler.toml` contiene i dati del tuo account ed è già escluso da Git: non finirà su GitHub per sbaglio.
-
 ### 5. Crea le tabelle del database
 
 ```bash
