@@ -257,10 +257,8 @@ async function loadSettings() {
 
 // ---------- aspetto: tema (GnuCash / Bootstrap 5) e modalità notte (sì / no / auto) ----------
 const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5" };
-const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (sistema, altrimenti tramonto)" };
+const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (sistema e tramonto)" };
 const darkMq = matchMedia("(prefers-color-scheme: dark)");
-const lightMq = matchMedia("(prefers-color-scheme: light)");
-const deviceHasScheme = () => darkMq.matches || lightMq.matches; // il dispositivo comunica una preferenza chiaro/scuro
 
 // Alba e tramonto (equazione dell'alba, formule NOAA semplificate). Ritorna gli intervalli di luce [alba, tramonto] in ms.
 function sunIntervals(lat, lon, now) {
@@ -289,8 +287,8 @@ async function ensureGeo() { // posizione approssimativa dalla rete di Cloudflar
   try { const g = await api("/location"); if (g.lat != null) { geo = { lat: g.lat, lon: g.lon, t: Date.now() }; try { localStorage.setItem("geo", JSON.stringify(geo)); } catch {} applyLook(); } } catch {}
 }
 function autoDark() {
-  if (deviceHasScheme()) return darkMq.matches; // 1) il dispositivo ha la sua modalità automatica: la seguiamo
-  const g = geo ?? GEO_DEFAULT, now = Date.now(); // 2) altrimenti: notte = prima dell'alba o dopo il tramonto
+  if (darkMq.matches) return true; // il sistema è in modalità scura: la seguiamo
+  const g = geo ?? GEO_DEFAULT, now = Date.now(); // altrimenti scuro comunque di notte (prima dell'alba o dopo il tramonto)
   return !sunIntervals(g.lat, g.lon, now).some(([r, s]) => now >= r && now < s);
 }
 function applyLook() {
@@ -302,8 +300,7 @@ function applyLook() {
   if (mode === "auto") { try { localStorage.setItem("lastDark", dark ? "1" : "0"); } catch {} ensureGeo(); }
 }
 darkMq.addEventListener("change", applyLook); // in modalità automatica segue il sistema in tempo reale
-lightMq.addEventListener("change", applyLook);
-setInterval(() => settings.colorMode === "auto" && applyLook(), 60000); // senza preferenza di sistema segue il sole
+setInterval(() => settings.colorMode === "auto" && applyLook(), 60000); // segue anche il sole
 
 // schede dentro la modale: pulsanti .tabs [data-t] che mostrano il blocco [data-tab] corrispondente
 function bindTabs(onChange) {
