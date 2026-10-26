@@ -1,6 +1,8 @@
 {
   "name": "cloudcash",
   "private": true,
+  "license": "AGPL-3.0-or-later",
+  "author": "Andrea Coi",
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",

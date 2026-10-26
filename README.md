@@ -218,3 +218,12 @@ Il database locale è separato da quello online: serve per provare, non tocca i 
 - `npm run typecheck` controlla i tipi TypeScript.
 
 I contributi sono benvenuti: apri una *Issue* o una *Pull Request*.
+
+## Licenza
+
+CloudCash è software libero, rilasciato con licenza **[GNU AGPL‑3.0 o successiva](LICENSE)**.
+Puoi usarlo, studiarlo, modificarlo e condividerlo. Se pubblichi una versione modificata, anche solo come servizio
+online, devi rendere disponibile il codice della tua versione con la stessa licenza.
+
+Copyright © 2026 Andrea Coi.
+CloudCash è un progetto indipendente e non è affiliato né approvato dal progetto GnuCash.
