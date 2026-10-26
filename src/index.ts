@@ -105,7 +105,7 @@ app.post("/api/password", async (c) => {
 
 // ---------- impostazioni (uguali su ogni dispositivo) ----------
 const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec", "theme", "colorMode"];
-const SETTING_ENUMS: Record<string, string[]> = { theme: ["gnucash", "bs5"], colorMode: ["yes", "no", "auto"] };
+const SETTING_ENUMS: Record<string, string[]> = { theme: ["gnucash", "bs5", "tokyonight", "habamax", "gruvbox", "nord", "catppuccin"], colorMode: ["yes", "no", "auto"] };
 const settingOk = (k: string, v: unknown) => !SETTING_ENUMS[k] || SETTING_ENUMS[k].includes(v as string);
 
 app.get("/api/settings", async (c) => {

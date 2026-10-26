@@ -256,7 +256,7 @@ async function loadSettings() {
 }
 
 // ---------- aspetto: tema (GnuCash / Bootstrap 5) e modalità notte (sì / no / auto) ----------
-const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5" };
+const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5", tokyonight: "Tokyo Night", habamax: "Habamax", gruvbox: "Gruvbox", nord: "Nord", catppuccin: "Catppuccin" };
 const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (sistema e tramonto)" };
 const darkMq = matchMedia("(prefers-color-scheme: dark)");
 

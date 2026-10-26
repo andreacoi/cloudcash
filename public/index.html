@@ -12,7 +12,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="CloudCash">
 <meta name="theme-color" content="#0b3a52">
-<script>try{var d=document.documentElement,t=JSON.parse(localStorage.getItem("theme")),m=JSON.parse(localStorage.getItem("colorMode"));d.dataset.theme=t==="bs5"?"bs5":"gnucash";d.dataset.dark=(m==="yes"||(m==="auto"&&(matchMedia("(prefers-color-scheme: dark)").matches||localStorage.getItem("lastDark")==="1")))?"1":"0"}catch(e){}</script>
+<script>try{var d=document.documentElement,t=JSON.parse(localStorage.getItem("theme")),m=JSON.parse(localStorage.getItem("colorMode"));d.dataset.theme=/^(bs5|tokyonight|habamax|gruvbox|nord|catppuccin)$/.test(t)?t:"gnucash";d.dataset.dark=(m==="yes"||(m==="auto"&&(matchMedia("(prefers-color-scheme: dark)").matches||localStorage.getItem("lastDark")==="1")))?"1":"0"}catch(e){}</script>
 <link rel="stylesheet" href="/style.css">
 </head>
 <body>
