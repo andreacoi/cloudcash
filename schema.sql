@@ -2,12 +2,15 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   username TEXT NOT NULL UNIQUE,
   pw_hash TEXT NOT NULL,
-  pw_salt TEXT NOT NULL
+  pw_salt TEXT NOT NULL,
+  recovery_hash TEXT              -- SHA-256 del codice di recupero (vuoto = non impostato)
 );
 CREATE TABLE IF NOT EXISTS sessions (
   token_hash TEXT PRIMARY KEY,
   user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  expires_at INTEGER NOT NULL
+  expires_at INTEGER NOT NULL,
+  remember INTEGER NOT NULL DEFAULT 1,   -- 1 = "Ricordami": 30 giorni, senza blocco per inattività
+  last_seen INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS accounts (
   id TEXT PRIMARY KEY,

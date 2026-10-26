@@ -4,7 +4,7 @@ import { parseGnucash, exportGnucash, Book } from "./gnucash";
 import { buildXlsx } from "./xlsx";
 import { ACC_TYPES, CREDIT_NORMAL, childTypes, typeGroup, fullName } from "./accounts";
 
-type Env = { Bindings: { DB: D1Database; ASSETS: Fetcher }; Variables: { userId: number } };
+type Env = { Bindings: { DB: D1Database; ASSETS: Fetcher }; Variables: { userId: number; remember: boolean } };
 const app = new Hono<Env>();
 
 const SESSION_DAYS = 30;
@@ -27,12 +27,18 @@ const safeEq = (a: string, b: string) => {
   return d === 0;
 };
 
-async function startSession(c: Context<Env>, userId: number) {
+// remember = "Ricordami": cookie di 30 giorni e nessun blocco per inattività; altrimenti cookie di sessione (si perde alla chiusura del browser)
+async function startSession(c: Context<Env>, userId: number, remember = true) {
   const token = hex(crypto.getRandomValues(new Uint8Array(32)));
-  const exp = Date.now() + SESSION_DAYS * 864e5;
-  await c.env.DB.prepare("INSERT INTO sessions VALUES (?,?,?)").bind(await sha256(token), userId, exp).run();
-  setCookie(c, "sid", token, { httpOnly: true, secure: new URL(c.req.url).protocol === "https:", sameSite: "Strict", path: "/", maxAge: SESSION_DAYS * 86400 });
+  const now = Date.now(), exp = now + SESSION_DAYS * 864e5;
+  await c.env.DB.prepare("INSERT INTO sessions (token_hash,user_id,expires_at,remember,last_seen) VALUES (?,?,?,?,?)").bind(await sha256(token), userId, exp, remember ? 1 : 0, now).run();
+  setCookie(c, "sid", token, { httpOnly: true, secure: new URL(c.req.url).protocol === "https:", sameSite: "Strict", path: "/", ...(remember ? { maxAge: SESSION_DAYS * 86400 } : {}) });
 }
+
+// Codice di recupero password: 20 caratteri (100 bit) a gruppi di 5, mostrato una sola volta; nel DB resta solo l'hash.
+const RECOVERY_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"; // 32 simboli, senza O/0/I/1
+const newRecoveryCode = () => [...crypto.getRandomValues(new Uint8Array(20))].map((b) => RECOVERY_ALPHABET[b & 31]).join("").replace(/(.{5})(?=.)/g, "$1-");
+const recoveryHash = (code: string) => sha256("recovery:" + code.toUpperCase().replace(/[^A-Z0-9]/g, ""));
 
 // ---------- auth ----------
 app.get("/api/status", async (c) => {
@@ -47,22 +53,38 @@ app.post("/api/setup", async (c) => {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const pw_hash = await hashPw(password, salt);
   // INSERT condizionale atomico: evita race tra due richieste di setup
-  const r = await c.env.DB.prepare("INSERT INTO users (username,pw_hash,pw_salt) SELECT ?,?,? WHERE NOT EXISTS (SELECT 1 FROM users)")
-    .bind(username, pw_hash, hex(salt)).run();
+  const recoveryCode = newRecoveryCode();
+  const r = await c.env.DB.prepare("INSERT INTO users (username,pw_hash,pw_salt,recovery_hash) SELECT ?,?,?,? WHERE NOT EXISTS (SELECT 1 FROM users)")
+    .bind(username, pw_hash, hex(salt), await recoveryHash(recoveryCode)).run();
   if (!r.meta.changes) return c.json({ error: "Setup già eseguito" }, 403);
   const u = await c.env.DB.prepare("SELECT id FROM users WHERE username=?").bind(username).first<{ id: number }>();
-  await startSession(c, u!.id);
-  return c.json({ ok: true });
+  await startSession(c, u!.id, true);
+  return c.json({ ok: true, recoveryCode });
 });
 
 app.post("/api/login", async (c) => {
-  const { username, password } = await c.req.json<{ username: string; password: string }>();
+  const { username, password, remember } = await c.req.json<{ username: string; password: string; remember?: boolean }>();
   const u = await c.env.DB.prepare("SELECT id,pw_hash,pw_salt FROM users WHERE username=?").bind(username ?? "").first<any>();
   // calcolo comunque l'hash per non rivelare se lo username esiste
   const h = await hashPw(password ?? "", u ? unhex(u.pw_salt) : new Uint8Array(16));
   if (!u || !safeEq(h, u.pw_hash)) return c.json({ error: "Credenziali errate" }, 401);
-  await startSession(c, u.id);
+  await startSession(c, u.id, !!remember);
   return c.json({ ok: true });
+});
+
+// Reimposta la password con il codice di recupero. Il codice è monouso: ne viene restituito uno nuovo.
+app.post("/api/recovery/reset", async (c) => {
+  const { username, code, password } = await c.req.json<{ username: string; code: string; password: string }>();
+  if (!password || password.length < 8) return c.json({ error: "Nuova password troppo corta (min. 8)" }, 400);
+  const u = await c.env.DB.prepare("SELECT id,recovery_hash FROM users WHERE username=?").bind(username ?? "").first<any>();
+  const h = await recoveryHash(code ?? "");
+  if (!u || !u.recovery_hash || !safeEq(h, u.recovery_hash)) return c.json({ error: "Username o codice di recupero non validi" }, 403);
+  const salt = crypto.getRandomValues(new Uint8Array(16)), recoveryCode = newRecoveryCode();
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE users SET pw_hash=?,pw_salt=?,recovery_hash=? WHERE id=?").bind(await hashPw(password, salt), hex(salt), await recoveryHash(recoveryCode), u.id),
+    c.env.DB.prepare("DELETE FROM sessions WHERE user_id=?").bind(u.id),
+  ]);
+  return c.json({ ok: true, recoveryCode });
 });
 
 app.post("/api/logout", async (c) => {
@@ -73,15 +95,40 @@ app.post("/api/logout", async (c) => {
 });
 
 app.use("/api/*", async (c, next) => {
-  if (["/api/status", "/api/setup", "/api/login", "/api/logout"].includes(c.req.path)) return next();
+  if (["/api/status", "/api/setup", "/api/login", "/api/logout", "/api/recovery/reset"].includes(c.req.path)) return next();
   const t = getCookie(c, "sid");
-  const s = t && (await c.env.DB.prepare("SELECT user_id FROM sessions WHERE token_hash=? AND expires_at>?").bind(await sha256(t), Date.now()).first<{ user_id: number }>());
+  const th = t ? await sha256(t) : "", now = Date.now();
+  const s = t && (await c.env.DB.prepare("SELECT user_id,remember,last_seen FROM sessions WHERE token_hash=? AND expires_at>?").bind(th, now).first<{ user_id: number; remember: number; last_seen: number }>());
   if (!s) return c.json({ error: "Non autenticato" }, 401);
+  if (!s.remember) { // blocco per inattività (impostazione "idleMinutes", 0 = mai)
+    const row = await c.env.DB.prepare("SELECT value FROM settings WHERE key='idleMinutes'").first<{ value: string }>();
+    const idle = row ? parseInt(JSON.parse(row.value), 10) || 0 : 0;
+    if (idle > 0 && now - s.last_seen > idle * 60_000) {
+      await c.env.DB.prepare("DELETE FROM sessions WHERE token_hash=?").bind(th).run();
+      deleteCookie(c, "sid", { path: "/" });
+      return c.json({ error: "Sessione scaduta per inattività" }, 401);
+    }
+    if (now - s.last_seen > 15_000) await c.env.DB.prepare("UPDATE sessions SET last_seen=? WHERE token_hash=?").bind(now, th).run();
+  }
   c.set("userId", s.user_id);
+  c.set("remember", !!s.remember);
   await next();
 });
 
-app.get("/api/me", (c) => c.json({ ok: true }));
+app.get("/api/me", async (c) => {
+  const u = await c.env.DB.prepare("SELECT recovery_hash FROM users WHERE id=?").bind(c.get("userId")).first<{ recovery_hash: string | null }>();
+  return c.json({ ok: true, remember: c.get("remember"), recovery: !!u?.recovery_hash });
+});
+
+// genera un nuovo codice di recupero (richiede la password attuale); il vecchio smette di valere
+app.post("/api/recovery/generate", async (c) => {
+  const { current } = await c.req.json<{ current: string }>();
+  const u = await c.env.DB.prepare("SELECT pw_hash,pw_salt FROM users WHERE id=?").bind(c.get("userId")).first<any>();
+  if (!safeEq(await hashPw(current ?? "", unhex(u.pw_salt)), u.pw_hash)) return c.json({ error: "Password attuale errata" }, 403);
+  const recoveryCode = newRecoveryCode();
+  await c.env.DB.prepare("UPDATE users SET recovery_hash=? WHERE id=?").bind(await recoveryHash(recoveryCode), c.get("userId")).run();
+  return c.json({ ok: true, recoveryCode });
+});
 
 // posizione approssimativa del client (da Cloudflare), usata per alba/tramonto della modalità notte automatica
 app.get("/api/location", (c) => {
@@ -104,8 +151,8 @@ app.post("/api/password", async (c) => {
 });
 
 // ---------- impostazioni (uguali su ogni dispositivo) ----------
-const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec", "theme", "colorMode"];
-const SETTING_ENUMS: Record<string, string[]> = { theme: ["gnucash", "bs5", "tokyonight", "habamax", "gruvbox", "nord", "catppuccin"], colorMode: ["yes", "no", "auto"] };
+const SETTING_KEYS = ["accSort", "regSort", "showHidden", "showRec", "theme", "colorMode", "idleMinutes"];
+const SETTING_ENUMS: Record<string, string[]> = { theme: ["gnucash", "bs5", "tokyonight", "habamax", "gruvbox", "nord", "catppuccin"], colorMode: ["yes", "no", "auto"], idleMinutes: ["0", "1", "2", "3", "5", "7", "10"] };
 const settingOk = (k: string, v: unknown) => !SETTING_ENUMS[k] || SETTING_ENUMS[k].includes(v as string);
 
 app.get("/api/settings", async (c) => {

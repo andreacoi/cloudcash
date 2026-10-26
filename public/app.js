@@ -61,22 +61,87 @@ const root = () => accounts.find((a) => a.type === "ROOT");
 async function boot() {
   const { needsSetup } = await (await fetch("/api/status")).json();
   if (needsSetup) return renderLogin(true);
-  try { await api("/me"); await shell(); route(); } catch { renderLogin(); }
+  try { await shell(); route(); } catch { renderLogin(); }
 }
 
 function renderLogin(setup = false) {
+  loggedIn = false; clearTimeout(idleTimer);
+  if (dlg.open) dlg.close();
   app.innerHTML = `<form class="card login" id="lf"><h1><img class="logo" src="/assets/logo-128.png" alt="">CloudCash</h1>
     ${setup ? `<p class="mut">Primo avvio: scegli username e password (min. 8 caratteri).</p>` : ""}
     <label>Username</label><input name="username" autocomplete="username" required autofocus>
     <label>Password</label><input name="password" type="password" autocomplete="${setup ? "new-password" : "current-password"}" required>
-    <div class="err" id="le"></div><button class="primary" style="width:100%">${setup ? "Crea account" : "Accedi"}</button></form>`;
+    ${setup ? "" : `<label class="chk"><input type="checkbox" name="remember" value="1"> Ricordami</label>`}
+    <div class="err" id="le"></div><button class="primary" style="width:100%">${setup ? "Crea account" : "Accedi"}</button>
+    ${setup ? "" : `<p class="small" style="text-align:center;margin:12px 0 0"><a href="#" id="fg">Password dimenticata?</a></p>`}</form>`;
+  if (!setup) $("#fg").onclick = (e) => { e.preventDefault(); renderReset(); };
   $("#lf").onsubmit = async (e) => {
     e.preventDefault();
     const f = Object.fromEntries(new FormData(e.target));
-    try { await api(setup ? "/setup" : "/login", { json: f }); await shell(); route(); }
-    catch (err) { $("#le").textContent = err.message; }
+    f.remember = !!f.remember;
+    try {
+      const r = await j(setup ? "/setup" : "/login", { json: f });
+      await shell(); route();
+      if (r.recoveryCode) recoveryDialog(r.recoveryCode, "Il tuo account è pronto");
+    } catch (err) { $("#le").textContent = err.message; }
   };
 }
+
+// recupero password con il codice di recupero (generato al primo avvio o in Impostazioni → Sicurezza)
+function renderReset() {
+  app.innerHTML = `<form class="card login" id="rf"><h1><img class="logo" src="/assets/logo-128.png" alt="">CloudCash</h1>
+    <p class="mut">Inserisci il codice di recupero e scegli una nuova password.</p>
+    <label>Username</label><input name="username" autocomplete="username" required autofocus>
+    <label>Codice di recupero</label><input name="code" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXXX-XXXXX-XXXXX-XXXXX" required>
+    <label>Nuova password (min. 8 caratteri)</label><input name="password" type="password" autocomplete="new-password" required>
+    <label>Ripeti la nuova password</label><input name="again" type="password" autocomplete="new-password" required>
+    <div class="err" id="le"></div><button class="primary" style="width:100%">Reimposta password</button>
+    <p class="small" style="text-align:center;margin:12px 0 0"><a href="#" id="bk">Torna al login</a></p></form>`;
+  $("#bk").onclick = (e) => { e.preventDefault(); renderLogin(); };
+  $("#rf").onsubmit = async (e) => {
+    e.preventDefault();
+    const f = Object.fromEntries(new FormData(e.target));
+    if (f.password !== f.again) return ($("#le").textContent = "Le due password non coincidono");
+    try {
+      const r = await j("/recovery/reset", { json: { username: f.username, code: f.code, password: f.password } });
+      renderLogin();
+      recoveryDialog(r.recoveryCode, "Password reimpostata");
+    } catch (err) { $("#le").textContent = err.message; }
+  };
+}
+
+// mostra un codice di recupero una sola volta
+function recoveryDialog(code, title) {
+  if (dlg.open) dlg.close();
+  dlg.innerHTML = `<form method="dialog"><h3>${esc(title)}</h3>
+    <p>Conserva questo <b>codice di recupero</b> in un posto sicuro (gestore di password, foglio stampato). Serve a reimpostare la password se la dimentichi, <b>non verrà più mostrato</b> ed è valido una sola volta.</p>
+    <p class="code" id="rcode">${esc(code)}</p>
+    <div class="foot"><button type="button" id="rcopy">Copia</button><span class="sp"></span><button class="primary" id="rok">Ho salvato il codice</button></div></form>`;
+  dlg.showModal();
+  $("#rcopy").onclick = async () => { try { await navigator.clipboard.writeText(code); $("#rcopy").textContent = "Copiato ✓"; } catch { const r = document.createRange(); r.selectNodeContents($("#rcode")); getSelection().removeAllRanges(); getSelection().addRange(r); } };
+  $("#rok").onclick = (e) => { e.preventDefault(); dlg.close(); };
+}
+
+// ---- blocco per inattività: vale solo per le sessioni senza "Ricordami" (il server lo applica comunque) ----
+let loggedIn = false, sessionRemember = true, idleTimer = 0, lastActive = Date.now(), lastPing = 0;
+const idleMs = () => (+settings.idleMinutes || 0) * 60000;
+async function idleLogout() {
+  try { await api("/logout", { method: "POST" }); } catch {}
+  renderLogin();
+}
+function armIdle() {
+  clearTimeout(idleTimer);
+  if (loggedIn && !sessionRemember && idleMs()) idleTimer = setTimeout(idleLogout, idleMs());
+}
+function noteActivity() {
+  if (!loggedIn) return;
+  lastActive = Date.now(); armIdle();
+  if (!sessionRemember && lastActive - lastPing > 20000) { lastPing = lastActive; fetch("/api/me", { credentials: "same-origin" }).catch(() => {}); } // tiene viva la sessione sul server
+}
+["pointerdown", "keydown", "scroll", "input"].forEach((ev) => addEventListener(ev, noteActivity, { capture: true, passive: true }));
+document.addEventListener("visibilitychange", () => { // timer sospesi in background (iOS): al ritorno controlla da soli
+  if (document.visibilityState === "visible" && loggedIn && !sessionRemember && idleMs() && Date.now() - lastActive > idleMs()) idleLogout();
+});
 
 // ---- calcolatrice: pannello flottante non modale, resta usabile sopra le finestre di dialogo ----
 function calcEval(src) {
@@ -182,7 +247,10 @@ new MutationObserver(place).observe(dlg, { childList: true });
 dlg.addEventListener("close", place);
 
 async function shell() {
+  const me = await j("/me"); // 401 se non c'è sessione valida
+  sessionRemember = me.remember; loggedIn = true; lastActive = Date.now();
   await loadSettings();
+  armIdle();
   app.innerHTML = `<header><h1 id="home"><img class="logo" src="/assets/logo-128.png" alt="">CloudCash</h1><nav id="menu">
       <div class="mg"><button class="mt" aria-haspopup="true">File</button><div class="mp">
         <button id="bi">Importa…</button><button id="be">Esporta GnuCash</button><button id="bx">Esporta XLSX</button><button id="bj">Backup JSON</button><hr><button id="bo">Esci</button></div></div>
@@ -252,11 +320,13 @@ async function loadSettings() {
   showRec = !!get("showRec", false);
   settings.theme = get("theme", "gnucash");
   settings.colorMode = get("colorMode", "no");
+  settings.idleMinutes = String(get("idleMinutes", "0"));
   applyLook();
 }
 
 // ---------- aspetto: tema (GnuCash / Bootstrap 5) e modalità notte (sì / no / auto) ----------
 const THEMES = { gnucash: "GnuCash", bs5: "Bootstrap 5", tokyonight: "Tokyo Night", habamax: "Habamax", gruvbox: "Gruvbox", nord: "Nord", catppuccin: "Catppuccin" };
+const IDLE = { 0: "Mai", 1: "1 minuto", 2: "2 minuti", 3: "3 minuti", 5: "5 minuti", 7: "7 minuti", 10: "10 minuti" };
 const MODES = { no: "No (chiaro)", yes: "Sì (notte)", auto: "Automatica (sistema e tramonto)" };
 const darkMq = matchMedia("(prefers-color-scheme: dark)");
 
@@ -284,7 +354,7 @@ let geo = null;
 try { geo = JSON.parse(localStorage.getItem("geo")); } catch {}
 async function ensureGeo() { // posizione approssimativa dalla rete di Cloudflare: niente permessi da chiedere
   if (geo && Date.now() - geo.t < 7 * 864e5) return;
-  try { const g = await api("/location"); if (g.lat != null) { geo = { lat: g.lat, lon: g.lon, t: Date.now() }; try { localStorage.setItem("geo", JSON.stringify(geo)); } catch {} applyLook(); } } catch {}
+  try { const g = await j("/location"); if (g.lat != null) { geo = { lat: g.lat, lon: g.lon, t: Date.now() }; try { localStorage.setItem("geo", JSON.stringify(geo)); } catch {} applyLook(); } } catch {}
 }
 function autoDark() {
   if (darkMq.matches) return true; // il sistema è in modalità scura: la seguiamo
@@ -320,7 +390,7 @@ function settingsDialog() {
   const opts = (map, cur) => Object.entries(map).map(([k, v]) => `<option value="${k}" ${String(k) === String(cur) ? "selected" : ""}>${v}</option>`).join("");
   const regKeys = showRec ? { ...REG_SORT_KEYS, rec: "R (riconciliazione)" } : REG_SORT_KEYS;
   dlg.innerHTML = `<form id="sf"><h3>Impostazioni</h3>
-    <div class="tabs"><button type="button" class="on" data-t="a">Aspetto</button><button type="button" data-t="o">Ordinamento</button><button type="button" data-t="p">Password</button></div>
+    <div class="tabs"><button type="button" class="on" data-t="a">Aspetto</button><button type="button" data-t="o">Ordinamento</button><button type="button" data-t="p">Sicurezza</button></div>
 
     <div data-tab="a">
       <label>Tema</label><select id="st">${opts(THEMES, settings.theme)}</select>
@@ -338,11 +408,20 @@ function settingsDialog() {
     </div>
 
     <div data-tab="p" hidden>
+      <h4 style="margin:6px 0 0">Blocco automatico</h4>
+      <label>Esci dopo un periodo di inattività</label><select id="si">${opts(IDLE, settings.idleMinutes)}</select>
+      <p class="mut small">Vale per gli accessi senza "Ricordami"; chi sceglie "Ricordami" resta connesso per 30 giorni.</p>
+      <h4 style="margin:16px 0 0">Cambia password</h4>
       <label>Password attuale</label><input id="pc" type="password" autocomplete="current-password">
       <label>Nuova password (min. 8 caratteri)</label><input id="pn" type="password" autocomplete="new-password">
       <label>Ripeti la nuova password</label><input id="pr" type="password" autocomplete="new-password">
       <div class="err" id="pe"></div>
       <button type="button" class="primary" id="pg">Cambia password</button>
+      <h4 style="margin:16px 0 0">Codice di recupero</h4>
+      <p class="mut small" id="rs">…</p>
+      <label>Password attuale (per generare un nuovo codice)</label><input id="rp" type="password" autocomplete="current-password">
+      <div class="err" id="re"></div>
+      <button type="button" id="rg">Genera nuovo codice</button>
     </div>
 
     <p class="mut small" id="sn">Le scelte sono salvate nel tuo account e valgono su ogni dispositivo.</p>
@@ -352,6 +431,14 @@ function settingsDialog() {
 
   let resort = false;
   $("#st").onchange = (e) => { settings.theme = e.target.value; saveSetting("theme", settings.theme); applyLook(); };
+  $("#si").onchange = (e) => { saveSetting("idleMinutes", e.target.value); armIdle(); };
+  j("/me").then((m) => ($("#rs").textContent = m.recovery ? "Un codice di recupero è attivo. Generandone uno nuovo, quello vecchio smette di funzionare." : "Nessun codice di recupero: generane uno per poter reimpostare la password se la dimentichi.")).catch(() => {});
+  $("#rg").onclick = async () => {
+    $("#re").textContent = "";
+    if (!$("#rp").value) return ($("#re").textContent = "Inserisci la password attuale");
+    try { const r = await j("/recovery/generate", { json: { current: $("#rp").value } }); $("#rp").value = ""; recoveryDialog(r.recoveryCode, "Nuovo codice di recupero"); }
+    catch (err) { $("#re").textContent = err.message; }
+  };
   $("#sm").onchange = (e) => { settings.colorMode = e.target.value; saveSetting("colorMode", settings.colorMode); applyLook(); };
   const sortBinding = (keyId, dirId, st, name) => {
     const save = () => { st.key = $(keyId).value; st.dir = +$(dirId).value; saveSetting(name, { key: st.key, dir: st.dir }); resort = true; };
