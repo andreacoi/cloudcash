@@ -65,7 +65,7 @@ async function boot() {
 }
 
 function renderLogin(setup = false) {
-  app.innerHTML = `<form class="card login" id="lf"><h1>CloudCash</h1>
+  app.innerHTML = `<form class="card login" id="lf"><h1><img class="logo" src="/assets/logo-128.png" alt="">CloudCash</h1>
     ${setup ? `<p class="mut">Primo avvio: scegli username e password (min. 8 caratteri).</p>` : ""}
     <label>Username</label><input name="username" autocomplete="username" required autofocus>
     <label>Password</label><input name="password" type="password" autocomplete="${setup ? "new-password" : "current-password"}" required>
@@ -183,7 +183,7 @@ dlg.addEventListener("close", place);
 
 async function shell() {
   await loadSettings();
-  app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
+  app.innerHTML = `<header><h1 id="home"><img class="logo" src="/assets/logo-128.png" alt="">CloudCash</h1><span class="sp"></span>
     <button id="bc" title="Calcolatrice" aria-label="Calcolatrice"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8.5 7h7"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg></button><button id="bm" class="burger" aria-label="Menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-4px"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><nav id="menu"><button id="bi">Importa</button><button id="be">Esporta</button><button id="bx">Esporta XLSX</button><button id="bj">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></nav></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz,.json" hidden>`;
   $("#home").onclick = () => (location.hash = "");

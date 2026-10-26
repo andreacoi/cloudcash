@@ -48,7 +48,9 @@ html[data-theme="bs5"][data-dark="1"]{color-scheme:dark;
 *{box-sizing:border-box}
 body{overflow-x:hidden;margin:0;background:var(--bg);color:var(--fg);font:var(--fs)/1.35 var(--font)}
 header{display:flex;align-items:center;gap:8px;padding:6px 12px;background:var(--hbar);border-bottom:1px solid var(--hborder);position:sticky;top:0;z-index:5}
-header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:var(--htitle)}
+header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:var(--htitle);display:flex;align-items:center;gap:7px}
+.logo{width:22px;height:22px;display:block}
+.login h1{display:flex;align-items:center;gap:10px}.login .logo{width:44px;height:44px}
 header .sp{flex:1}
 header nav{display:flex;gap:8px}
 .burger{display:none}
