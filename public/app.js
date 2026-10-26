@@ -184,7 +184,7 @@ dlg.addEventListener("close", place);
 async function shell() {
   await loadSettings();
   app.innerHTML = `<header><h1 id="home">CloudCash</h1><span class="sp"></span>
-    <button id="bc" title="Calcolatrice" aria-label="Calcolatrice"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8.5 7h7"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg></button><button id="bi">Importa</button><button id="be">Esporta</button><button id="bx" class="hide-sm">Esporta XLSX</button><button id="bj" class="hide-sm">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></header>
+    <button id="bc" title="Calcolatrice" aria-label="Calcolatrice"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-3px"><rect x="5" y="2.5" width="14" height="19" rx="2"/><path d="M8.5 7h7"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01M8.5 16h.01M12 16h.01M15.5 16h.01"/></svg></button><button id="bm" class="burger" aria-label="Menu" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true" style="vertical-align:-4px"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button><nav id="menu"><button id="bi">Importa</button><button id="be">Esporta</button><button id="bx">Esporta XLSX</button><button id="bj">Backup JSON</button><button id="bp">Impostazioni</button><button id="bo">Esci</button></nav></header>
     <main id="main"></main><input type="file" id="file" accept=".gnucash,.xml,.gz,.json" hidden>`;
   $("#home").onclick = () => (location.hash = "");
   $("#bo").onclick = async () => { await api("/logout", { method: "POST" }); renderLogin(); };
@@ -192,6 +192,10 @@ async function shell() {
   $("#bx").onclick = () => (location.href = "/api/export.xlsx");
   $("#bj").onclick = () => (location.href = "/api/backup");
   $("#bc").onclick = toggleCalc;
+  const menu = $("#menu"), setMenu = (o) => { menu.classList.toggle("open", o); $("#bm")?.setAttribute("aria-expanded", o); };
+  $("#bm").onclick = (e) => { e.stopPropagation(); setMenu(!menu.classList.contains("open")); };
+  menu.onclick = () => setMenu(false); // ogni voce chiude il menu
+  document.onclick = () => menu.isConnected && setMenu(false);
   $("#bi").onclick = () => $("#file").click();
   $("#file").onchange = async (e) => {
     const f = e.target.files[0]; e.target.value = "";
