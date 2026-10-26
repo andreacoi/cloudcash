@@ -52,7 +52,15 @@ header h1{font-size:16px;margin:0 8px 0 0;cursor:pointer;color:var(--htitle);dis
 .logo{width:22px;height:22px;display:block}
 .login h1{display:flex;align-items:center;gap:10px}.login .logo{width:44px;height:44px}
 header .sp{flex:1}
-header nav{display:flex;gap:8px}
+header nav{display:flex;gap:2px}
+.mg{position:relative}
+.mt{background:none;border:0;border-radius:var(--r);padding:4px 10px}
+.mt:hover,.mg.on>.mt{background:var(--btn-h)}
+.mp{display:none;position:absolute;top:100%;left:0;min-width:200px;padding:4px 0;background:var(--dlg);color:var(--fg);border:1px solid var(--dlg-b);border-radius:var(--r);box-shadow:0 6px 16px rgba(0,0,0,.3);z-index:20}
+.mg.on>.mp{display:block}
+.mp button{display:block;width:100%;text-align:left;border:0;border-radius:0;background:none;padding:7px 16px;white-space:nowrap}
+.mp button:hover{background:var(--pri);color:#fff}
+.mp hr{border:0;border-top:1px solid var(--dlg-b);margin:4px 0}
 .burger{display:none}
 main{padding:10px 12px}
 @media(min-width:900px){main{max-width:none}}
@@ -115,10 +123,13 @@ a{color:var(--acc)}
   .splits td:nth-child(1),.splits td:nth-child(2){grid-column:1/-1}
   .splits td:nth-child(5){grid-column:3;grid-row:3}
   .burger{display:inline-block}
-  header nav{display:none;position:absolute;top:100%;right:0;min-width:180px;flex-direction:column;gap:0;background:var(--hbar);border:1px solid var(--hborder);border-top:0;box-shadow:0 4px 10px rgba(0,0,0,.25)}
+  header nav{display:none;position:absolute;top:100%;right:0;min-width:200px;flex-direction:column;gap:0;background:var(--hbar);border:1px solid var(--hborder);border-top:0;box-shadow:0 4px 10px rgba(0,0,0,.25)}
   header nav.open{display:flex}
-  header nav button{border:0;border-radius:0;background:none;text-align:left;padding:11px 16px}
-  header nav button+button{border-top:1px solid var(--hborder)}
+  .mg{display:contents}.mt{display:none}
+  .mp,.mg.on>.mp{display:block;position:static;min-width:0;padding:0;background:none;border:0;box-shadow:none;color:inherit}
+  .mp hr,#bcm{display:none}
+  .mp button{padding:11px 16px;border-top:1px solid var(--hborder)}
+  .mp button:hover{background:none;color:inherit}
   .hide-sm{display:none}main{padding:6px}th,td{padding:5px 5px}
   td.only-sm,th.only-sm{display:table-cell}div.only-sm{display:block}
   /* registro: tutto nella larghezza dello schermo, niente scroll orizzontale */
