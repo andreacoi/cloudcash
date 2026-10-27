@@ -168,6 +168,10 @@ button.danger{color:var(--neg)}
 button.link{border:0;background:none;color:var(--acc);padding:2px 6px}
 input,select,textarea{background:var(--in);border:1px solid var(--in-b);border-radius:var(--in-r);padding:4px 6px;width:100%}
 input:focus,select:focus,textarea:focus{outline:none;box-shadow:var(--focus)}
+/* iOS/iPadOS: il campo data ha larghezza intrinseca e testo centrato; lo allineo agli altri campi */
+input[type=date]{-webkit-appearance:none;appearance:none;min-width:0;max-width:100%;box-sizing:border-box;min-height:1.9em;text-align:left}
+input[type=date]::-webkit-date-and-time-value{text-align:left;margin:0;min-height:1.2em}
+input[type=date]::-webkit-calendar-picker-indicator{margin:0}
 .card{background:var(--card);border:1px solid var(--card-b);border-radius:var(--card-r);overflow:hidden}
 .bar{display:flex;gap:8px;align-items:center;margin-bottom:8px;flex-wrap:wrap}
 .bar h2{margin:0;font-size:16px;flex:1}
